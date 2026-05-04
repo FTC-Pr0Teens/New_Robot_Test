@@ -6,22 +6,20 @@ import com.seattlesolvers.solverslib.drivebase.MecanumDrive;
 import com.seattlesolvers.solverslib.gamepad.GamepadEx;
 import com.seattlesolvers.solverslib.hardware.motors.Motor;
 
-@TeleOp
-public class TestOp extends OpMode {
+import org.firstinspires.ftc.teamcode.hardware.Hardware;
 
-    private Motor fL, fR, bL, bR;
+@TeleOp
+public class TestRobCen extends OpMode {
     private MecanumDrive drive;
     private GamepadEx driverOp;
 
+    private Hardware hw;
+
     @Override
     public void init() {
-        /* instantiate motors */
-        Motor fL = new Motor(hardwareMap, "fl", Motor.GoBILDA.RPM_312);
-        Motor fR = new Motor(hardwareMap, "fr", Motor.GoBILDA.RPM_312);
-        Motor bL = new Motor(hardwareMap, "bl", Motor.GoBILDA.RPM_312);
-        Motor bR = new Motor(hardwareMap, "br", Motor.GoBILDA.RPM_312);
+        hw = Hardware.getInstance(hardwareMap);
 
-        drive = new MecanumDrive(fL, fR, bL, bR);
+        drive = new MecanumDrive(hw.fL, hw.fR, hw.bL, hw.bR);
         driverOp = new GamepadEx(gamepad1);
     }
 
