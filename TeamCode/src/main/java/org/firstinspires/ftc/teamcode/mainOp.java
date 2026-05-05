@@ -51,6 +51,11 @@ public class mainOp extends OpMode {
                 RevHubOrientationOnRobot.LogoFacingDirection.LEFT,
                 RevHubOrientationOnRobot.UsbFacingDirection.UP));
         imu.initialize(parameters);
+
+        telemetry.speak("Press a for intake");
+        telemetry.speak("Press x to sort");
+        telemetry.speak("Press b to reset sorting");
+        telemetry.speak("Make sure to look at the screen!!!");
     }
 
     @Override
