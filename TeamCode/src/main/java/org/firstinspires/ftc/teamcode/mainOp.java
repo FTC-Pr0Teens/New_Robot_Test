@@ -5,6 +5,7 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
+import com.qualcomm.robotcore.hardware.Servo;
 import com.seattlesolvers.solverslib.drivebase.MecanumDrive;
 import com.seattlesolvers.solverslib.gamepad.GamepadEx;
 
@@ -66,7 +67,10 @@ public class mainOp extends OpMode {
 
         if (sortingEnabled) {
             sorter.moveToSlot(0);
+            hw.flipper.setDirection(Servo.Direction.FORWARD);
+            hw.flipper.setPosition(0);
         } else {
+            hw.flipper.setDirection(Servo.Direction.REVERSE);
             hw.flipper.setPosition(0.1);
         }
 
@@ -118,8 +122,10 @@ public class mainOp extends OpMode {
             sortingEnabled = !sortingEnabled;
             if (sortingEnabled) {
                 sorter.moveToSlot(0);
+                hw.flipper.setDirection(Servo.Direction.FORWARD);
                 hw.flipper.setPosition(0.0);
             } else {
+                hw.flipper.setDirection(Servo.Direction.REVERSE);
                 hw.flipper.setPosition(0.1);
             }
         }
