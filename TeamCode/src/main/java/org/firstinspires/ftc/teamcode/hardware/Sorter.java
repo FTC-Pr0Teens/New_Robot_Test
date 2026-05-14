@@ -12,14 +12,19 @@ public class Sorter {
 
     public enum BallColor { PURPLE, GREEN, NONE }
 
-    private static final double POS_1 = 0.4;
-    private static final double POS_2 = 0;
-    private static final double POS_3 = 0.8;
+    private static final double POS_1 = 0.19;
+    private static final double POS_2 = 0.55;
+    private static final double POS_3 = 0.91;
+
+    // Small trim to compensate for mechanical asymmetry between the two servos.
+    // Increase if sorter2 still fights; decrease (or negate) if it overshoots.
+    private static final double SERVO2_OFFSET = 0.05;
 
     private Hardware hw;
     private Telemetry telemetry;
     private int currentSlot = 0;
     private boolean ballDetected = false;
+    private int lastCommandedSlot = -1;
 
     private BallColor[] recordedColors = { BallColor.NONE, BallColor.NONE, BallColor.NONE };
     private boolean[] slotUsed = { false, false, false };
@@ -42,18 +47,15 @@ public class Sorter {
             return;
         }
 
-        // Ensure sorter is at the current slot to receive the ball
         moveToSlot(currentSlot);
 
         BallColor detected = detectColor(hue);
 
-        // Record only if it's a valid color and it's a "new" ball (transition from NONE)
         if ((detected == BallColor.PURPLE || detected == BallColor.GREEN) && !ballDetected) {
             recordedColors[currentSlot] = detected;
             currentSlot++;
             ballDetected = true;
         } else if (detected == BallColor.NONE) {
-            // Ball has passed or no ball present
             ballDetected = false;
         }
 
@@ -69,9 +71,7 @@ public class Sorter {
     public void sortToColor(BallColor target) {
         telemetry.addData("Search Target", target);
         for (int i = 0; i < 3; i++) {
-            // Log exactly what we are seeing in each slot
             telemetry.addData("Check Slot " + i, "Color: " + recordedColors[i] + ", Used: " + slotUsed[i]);
-            
             if (recordedColors[i] == target && !slotUsed[i]) {
                 moveToSlot(i);
                 slotUsed[i] = true;
@@ -82,7 +82,14 @@ public class Sorter {
         telemetry.addData("Sort Result", "NOT FOUND: " + target);
     }
 
+    /**
+     * Moves both servos to the given slot position.
+     * sorter2 is physically mirrored so it receives the complement (1.0 - pos),
+     * plus a small trim offset to prevent fighting at the target position.
+     */
     public void moveToSlot(int slot) {
+        if (slot == lastCommandedSlot) return;
+        lastCommandedSlot = slot;
         double pos;
         switch (slot) {
             case 0: pos = POS_1; break;
@@ -91,8 +98,11 @@ public class Sorter {
             default: return;
         }
         hw.sorter1.setPosition(pos);
-        hw.sorter2.setPosition(pos);
-        hw.sorter3.setPosition(pos);
+        hw.sorter2.setPosition(clamp(1.0 - pos + SERVO2_OFFSET));
+    }
+
+    private static double clamp(double v) {
+        return Math.max(0.0, Math.min(1.0, v));
     }
 
     private static BallColor detectColor(double hue) {
@@ -114,18 +124,17 @@ public class Sorter {
         slotUsed = new boolean[]{ false, false, false };
         currentSlot = 0;
         ballDetected = false;
+        lastCommandedSlot = -1;
     }
 
-    public void transfer(){
+    public void transfer() {
         hw.flipper.setPosition(0.15);
         elapsedTime.reset();
-        // The loop in mainOp might be calling this too fast, or the distance sensor might be jittery
-        while (elapsedTime.seconds() < 2.0 && hw.ds.getDistance(DistanceUnit.MM) < 100){
+        while (elapsedTime.seconds() < 2.0 && hw.ds.getDistance(DistanceUnit.MM) < 100) {
             hw.intake.set(0.8);
         }
         hw.intake.set(0);
         hw.flipper.setPosition(0);
-        // Small delay to allow mechanics to reset
         try { Thread.sleep(100); } catch (InterruptedException e) {}
     }
 }
