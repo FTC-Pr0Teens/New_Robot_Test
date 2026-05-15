@@ -26,7 +26,7 @@ public class mainOp extends OpMode {
     private Sorter sorter;
 
     private ShooterSubsystem shooter;
-    private final double targetRPM = 2200.0;
+    private final double targetRPM = 1500.0;
 
     // Intake toggle (Gamepad A)
     //Gyat
@@ -57,7 +57,8 @@ public class mainOp extends OpMode {
         sorter = new Sorter(hardwareMap, telemetry);
         shooter = new ShooterSubsystem(hardwareMap);
 
-        drive = new MecanumDrive(hw.fL, hw.fR, hw.bL, hw.bR);
+         drive = new MecanumDrive(hw.fL, hw.fR, hw.bL, hw.bR);
+//        drive = new MecanumDrive(hw.bL, hw.bR, hw.fL, hw.fR);
         driverOp = new GamepadEx(gamepad1);
 
         imu = hardwareMap.get(IMU.class, "imu");
@@ -69,7 +70,7 @@ public class mainOp extends OpMode {
         if (sortingEnabled) {
             sorter.moveToSlot(0);
             hw.flipper.setDirection(Servo.Direction.FORWARD);
-            hw.flipper.setPosition(0);
+            hw.flipper.setPosition(0.15);
         } else {
             hw.flipper.setDirection(Servo.Direction.REVERSE);
             hw.flipper.setPosition(0.1);
@@ -83,11 +84,7 @@ public class mainOp extends OpMode {
         // --- Driving ---
         // FIX #3: Use getRightX() for rotation, not getRightY()
         double heading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
-        drive.driveFieldCentric(
-                driverOp.getLeftX(),
-                driverOp.getLeftY(),
-                driverOp.getRightX(),
-                heading);
+        drive.driveFieldCentric(driverOp.getLeftX(), driverOp.getLeftY(), -driverOp.getRightX(), heading);
 
         // --- Intake toggle (gamepad1 a) ---
         boolean currentIntakeButton = gamepad1.a;
@@ -124,10 +121,12 @@ public class mainOp extends OpMode {
             if (sortingEnabled) {
                 sorter.moveToSlot(0);
                 hw.flipper.setDirection(Servo.Direction.FORWARD);
-                hw.flipper.setPosition(0.0);
+                hw.flipper.setPosition(0.15);
             } else {
-                hw.flipper.setDirection(Servo.Direction.REVERSE);
-                hw.flipper.setPosition(0.1);
+                hw.flipper.setDirection(Servo.Direction.FORWARD);
+                // REVERSE
+                hw.flipper.setPosition(0);
+                //0.1
             }
         }
         lastYButton = currentYButton;

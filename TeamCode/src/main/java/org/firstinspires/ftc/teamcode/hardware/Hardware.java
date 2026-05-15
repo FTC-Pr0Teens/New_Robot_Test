@@ -40,12 +40,12 @@ public class Hardware {
         this.shooter = new MotorEx(hwMap, "shooter", Motor.GoBILDA.BARE);
 
 
-        fL.setInverted(true);
-        fR.setInverted(true);
-        bL.setInverted(true);
-        bR.setInverted(true);
+        fL.setInverted(false);
+        fR.setInverted(false);
+        bL.setInverted(false);
+        bR.setInverted(false);
 
-        this.intake.setInverted(true);
+        this.intake.setInverted(false);
 
         this.sorter1 = hwMap.get(Servo.class, "sorter1");
         this.sorter2 = hwMap.get(Servo.class, "sorter2");

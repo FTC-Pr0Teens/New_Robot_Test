@@ -99,7 +99,7 @@ public class ShooterSubsystem {
         } else {
             double currentVelocity = hw.shooter.getVelocity(); // ticks/sec
             double power = shooterPID.calculate(currentVelocity, targetTPS);
-            hw.shooter.set(power);
+            hw.shooter.set(-power);
         }
     }
 

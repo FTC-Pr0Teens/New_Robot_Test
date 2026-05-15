@@ -98,7 +98,7 @@ public class Sorter {
             default: return;
         }
         hw.sorter1.setPosition(pos);
-        hw.sorter2.setPosition(clamp(1.0 - pos + SERVO2_OFFSET));
+        // hw.sorter2.setPosition(clamp(1.0 - pos + SERVO2_OFFSET));
     }
 
     private static double clamp(double v) {
@@ -128,6 +128,7 @@ public class Sorter {
     }
 
     public void transfer() {
+        // 0.15
         hw.flipper.setPosition(0.15);
         elapsedTime.reset();
         while (elapsedTime.seconds() < 2.0 && hw.ds.getDistance(DistanceUnit.MM) < 100) {
