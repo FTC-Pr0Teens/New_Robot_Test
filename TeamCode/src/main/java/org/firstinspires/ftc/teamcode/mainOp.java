@@ -154,7 +154,7 @@ public class mainOp extends OpMode {
         telemetry.addData("Shooter RPM", "%.0f / %.0f", shooter.getCurrentRPM(), shooter.getTargetRPM());
         telemetry.addData("Sorting Mode", sortingEnabled ? "ENABLED (Auto)" : "DISABLED (Flipper UP)");
         telemetry.addData("Recorded List", Arrays.toString(sorter.getRecordedColors()));
-
+        telemetry.addData("Robot Heading", heading);
         telemetry.update();
     }
 }
