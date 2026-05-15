@@ -29,6 +29,7 @@ public class mainOp extends OpMode {
     private final double targetRPM = 2200.0;
 
     // Intake toggle (Gamepad A)
+    //Gyat
     boolean intakeRunning = false;
     boolean lastIntakeButton = false;
 
