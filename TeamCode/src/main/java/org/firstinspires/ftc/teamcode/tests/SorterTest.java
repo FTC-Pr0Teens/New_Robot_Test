@@ -14,8 +14,8 @@ public class SorterTest extends OpMode {
     Sorter sorter;
 
     private double pos1 = 0.19;  // Slot 0
-    private double pos2 = 0.54;   // Slot 1
-    private double pos3 = 0.90;  // Slot 2
+    private double pos2 = 0.57;   // Slot 1
+    private double pos3 = 0.93;  // Slot 2
 
     private int selectedSlot = 0;
 

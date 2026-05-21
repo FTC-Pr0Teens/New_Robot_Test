@@ -10,9 +10,9 @@ public class ShooterSubsystem {
     // Shooter Constants (6000 RPM goBilda) — tune kF first, then kP, then kI/kD
     // Made public so ShooterTuningOp can modify them at runtime
     public static double kP = 0.0012;
-    public static double kI = 0.0001;
+    public static double kI = 0.005;
     public static double kD = 0.0005;
-    public static double kF = 0.00045;
+    public static double kF = 0.00035;
 
     public static final double TICKS_PER_REV = 28.0;
 
@@ -76,7 +76,7 @@ public class ShooterSubsystem {
         isRunning = false;
         openLoopMode = false;
         shooterPID.reset();
-        hw.shooter.set(0.0);
+        hw.shooter.setPower(0.0);
     }
 
     public void toggle() {
@@ -91,24 +91,25 @@ public class ShooterSubsystem {
      */
     public void update() {
         if (!isRunning) {
-            hw.shooter.set(0.0);
+            hw.shooter.setPower(0.0);
             return;
         }
         if (openLoopMode) {
-            hw.shooter.set(openLoopPower);
+            hw.shooter.setPower(openLoopPower);
         } else {
-            double currentVelocity = hw.shooter.getVelocity(); // ticks/sec
+            // Flipped logic: use absolute velocity for PID and telemetry
+            double currentVelocity = Math.abs(hw.shooter.getVelocity()); // ticks/sec
             double power = shooterPID.calculate(currentVelocity, targetTPS);
-            hw.shooter.set(power);
+            hw.shooter.setPower(power);
         }
     }
 
     public double getCurrentRPM() {
-        return (hw.shooter.getVelocity() * 60.0) / TICKS_PER_REV;
+        return (Math.abs(hw.shooter.getVelocity()) * 60.0) / TICKS_PER_REV;
     }
 
     public double getCurrentTPS() {
-        return hw.shooter.getVelocity();
+        return Math.abs(hw.shooter.getVelocity());
     }
 
     public double getTargetRPM() {

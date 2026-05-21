@@ -9,7 +9,7 @@ public class ShooterTest extends OpMode {
     private ShooterSubsystem shooter;
 
     // Configurable runtime test targets
-    private double tuneRPM = 2200.0;
+    private double tuneRPM = 1500.0;
     private double testPower = 0.45; // Starts at ~45% raw motor output
 
     // Debounce state flags for buttons
@@ -62,6 +62,7 @@ public class ShooterTest extends OpMode {
         telemetry.addLine("Dpad Up/Dn: Adjust RPM | Dpad L/R: Adjust Power");
         telemetry.addLine("====================");
         telemetry.addData("Control Strategy", shooter.isOpenLoop() ? "OPEN-LOOP (RAW)" : "CLOSED-LOOP (PID)");
+        telemetry.addData("Current RPM", "%.0f", shooter.getCurrentRPM());
         telemetry.addData("Configured Target RPM", tuneRPM);
         telemetry.addData("Configured Target Power", "%.2f", testPower);
         telemetry.update();
