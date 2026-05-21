@@ -167,11 +167,18 @@ public class Sorter {
         // Step 1: Wait for sorter servos to reach their destination before flipping
         try { Thread.sleep(400); } catch (InterruptedException e) {}
 
-        // Step 2: Move flipper UP to the scoring position
+        // Step 2: Clear memory for the slot we are about to shoot
+        // This ensures the list stays accurate as balls exit
+        if (lastCommandedSlot != -1) {
+            recordedColors[lastCommandedSlot] = BallColor.NONE;
+            slotUsed[lastCommandedSlot] = false;
+            if (currentSlot > 0) currentSlot--;
+        }
+
+        // Step 3: Move flipper UP to the scoring position
         hw.flipper.setPosition(0); 
         
-        // Step 3: Run intake for a set time to push the ball out
-        // Increased power to 1.0 and time to 1.1s for better clearance
+        // Step 4: Run intake for a set time to push the ball out
         elapsedTime.reset();
         while (elapsedTime.seconds() < 1.1) {
             hw.intake.setPower(1.0);
@@ -180,7 +187,7 @@ public class Sorter {
         }
         hw.intake.setPower(0);
         
-        // Step 4: Return flipper to LOW position so next ball can enter slots
+        // Step 5: Return flipper to LOW position so next ball can enter slots
         hw.flipper.setPosition(0.15); 
         try { Thread.sleep(150); } catch (InterruptedException e) {}
     }
