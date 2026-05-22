@@ -52,8 +52,8 @@ public class mainOp extends OpMode {
     private ShooterSubsystem shooter;
 
     // Configuration
-    private final double MANUAL_RPM = 1500.0;
-    private final double AUTO_SHOOT_RPM = 2300.0;
+    private final double MANUAL_RPM = 2500.0;
+    private final double AUTO_SHOOT_RPM = 2500.0;
     
     // Logic States
     private boolean intakeRunning = false;
@@ -65,6 +65,7 @@ public class mainOp extends OpMode {
     private boolean lastBButton = false;
 
     private boolean sortingEnabled = true;
+    private boolean SORT = false;
     private boolean lastYButton = false;
 
     private boolean lastXButton = false;
@@ -200,15 +201,30 @@ public class mainOp extends OpMode {
         boolean currentYButton = gamepad1.y;
         if (currentYButton && !lastYButton) {
             sortingEnabled = !sortingEnabled;
-            autoShootActive = false; // Disable auto-sequence if mode changes
-            if (sortingEnabled) {
-                sorter.moveToSlot(0);
+//            autoShootActive = false; // Disable auto-sequence if mode changes
+//            if (sortingEnabled) {
+////                sorter.moveToSlot(0);
+//                hw.flipper.setPosition(0.15);
+//            } else {
+//                hw.flipper.setPosition(0.0); // Bypass mode (UP)
+//            }
+        }
+        lastYButton = currentYButton;
+
+
+        //trigger sort
+        boolean currentTriggerButton = gamepad1.rightTriggerWasPressed();
+        if (currentTriggerButton) {
+            SORT = !SORT;
+//            autoShootActive = false; // Disable auto-sequence if mode changes
+            if (SORT) {
+//                sorter.moveToSlot(0);
                 hw.flipper.setPosition(0.15);
             } else {
                 hw.flipper.setPosition(0.0); // Bypass mode (UP)
             }
         }
-        lastYButton = currentYButton;
+
 
         // --- 6. AUTOMATIC RECORDING & REMOVAL ---
         NormalizedRGBA colors = hw.ncs.getNormalizedColors();
@@ -236,9 +252,19 @@ public class mainOp extends OpMode {
         
         // Manual Sorter Controls (Only in Bypass/Non-Sorting Mode)
         if (!sortingEnabled) {
-            if (gamepad1.dpad_up)    sorter.moveToSlot(0);
-            if (gamepad1.dpad_right) sorter.moveToSlot(1);
-            if (gamepad1.dpad_down)  sorter.moveToSlot(2);
+            if (gamepad1.dpad_up){
+                hw.flipper.setPosition(0.15);
+                sorter.moveToSlot(0);
+            }
+
+            if (gamepad1.dpad_right) {
+                hw.flipper.setPosition(0.15);
+                sorter.moveToSlot(1);
+            }
+            if (gamepad1.dpad_down) {
+                hw.flipper.setPosition(0.15);
+                sorter.moveToSlot(2);
+            }
         }
 
         // Reset Gyro Heading (Dpad Left)

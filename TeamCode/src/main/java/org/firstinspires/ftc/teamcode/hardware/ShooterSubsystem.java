@@ -9,8 +9,8 @@ public class ShooterSubsystem {
 
     // Shooter Constants (6000 RPM goBilda) — tune kF first, then kP, then kI/kD
     // Made public so ShooterTuningOp can modify them at runtime
-    public static double kP = 0.0012;
-    public static double kI = 0.005;
+    public static double kP = 0.0025;
+    public static double kI = 0.003;
     public static double kD = 0.0005;
     public static double kF = 0.00035;
 

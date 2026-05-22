@@ -12,9 +12,9 @@ public class Sorter {
 
     public enum BallColor { PURPLE, GREEN, NONE }
 
-    private static final double POS_1 = 0.19;
-    private static final double POS_2 = 0.57;
-    private static final double POS_3 = 0.93;
+    private static final double POS_1 = 0.17;
+    private static final double POS_2 = 0.54;
+    private static final double POS_3 = 0.86;
 
     // Small trim to compensate for mechanical asymmetry between the two servos.
     // Increase if sorter2 still fights; decrease (or negate) if it overshoots.
@@ -94,6 +94,21 @@ public class Sorter {
      * plus a small trim offset to prevent fighting at the target position.
      */
     public void moveToSlot(int slot) {
+        if (slot == lastCommandedSlot) return;
+        lastCommandedSlot = slot;
+        double pos;
+        switch (slot) {
+            case 0: pos = POS_1; break;
+            case 1: pos = POS_2; break;
+            case 2: pos = POS_3; break;
+            default: return;
+        }
+        hw.sorter1.setPosition(pos);
+        hw.sorter2.setPosition(clamp(1.0 - pos + SERVO2_OFFSET));
+    }
+
+    public void nextSlot(int slot) {
+
         if (slot == lastCommandedSlot) return;
         lastCommandedSlot = slot;
         double pos;
