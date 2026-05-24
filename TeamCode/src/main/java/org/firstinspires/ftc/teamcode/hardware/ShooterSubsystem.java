@@ -7,20 +7,20 @@ public class ShooterSubsystem {
     private final Hardware hw;
     private final PIDController shooterPID;
 
-    // Shooter Constants (6000 RPM goBilda) — tune kF first, then kP, then kI/kD
-    // Made public so ShooterTuningOp can modify them at runtime
-    public static double kP = 0.0025;
-    public static double kI = 0.003;
-    public static double kD = 0.0005;
-    public static double kF = 0.00035;
+    // Soft-start PID: kF provides base power, kI closes the gap, kP handles small corrections
+    public static double kP = 0.0006;
+    public static double kI = 0.01; 
+    public static double kD = 0.0001;
+    public static double kF = 0.00037;
 
     public static final double TICKS_PER_REV = 28.0;
 
     private double targetRPM = 0.0;
     private double targetTPS = 0.0;
+    private double rampedTargetTPS = 0.0;
     private boolean isRunning = false;
 
-    // Open-loop mode: bypass PID and drive motor directly with a fixed power
+    // Mode state for tuning
     private boolean openLoopMode = false;
     private double openLoopPower = 0.0;
 
@@ -31,37 +31,20 @@ public class ShooterSubsystem {
         shooterPID.setMaxOutput(1.0);
     }
 
-    /**
-     * Reload PID constants from the static fields.
-     * Call this after changing kP/kI/kD/kF during tuning.
-     */
-    public void reloadConstants() {
-        shooterPID.setPID(kP, kI, kD);
-        shooterPID.setF(kF);
-        shooterPID.reset();
-    }
-
-    /** Set the shooter target speed in RPM (closed-loop / PID mode). */
     public void setTargetRPM(double rpm) {
         this.targetRPM = rpm;
         this.targetTPS = (rpm / 60.0) * TICKS_PER_REV;
+        this.openLoopMode = false;
     }
 
-    /**
-     * Run the shooter in open-loop mode at a fixed power (0.0 – 1.0).
-     * Bypasses the PID entirely — useful for finding the right kF value.
-     * Observe the steady-state RPM, then set kF = power / targetTPS.
-     */
     public void setOpenLoop(double power) {
-        openLoopMode = true;
-        openLoopPower = power;
-        isRunning = true;
+        this.openLoopMode = true;
+        this.openLoopPower = power;
+        this.isRunning = true;
     }
 
-    /** Switch back to closed-loop (PID) mode. */
     public void setClosedLoop() {
-        openLoopMode = false;
-        shooterPID.reset();
+        this.openLoopMode = false;
     }
 
     public boolean isOpenLoop() {
@@ -70,36 +53,35 @@ public class ShooterSubsystem {
 
     public void on() {
         isRunning = true;
+        if (!openLoopMode) {
+            rampedTargetTPS = 0.0;
+        }
     }
 
     public void off() {
         isRunning = false;
-        openLoopMode = false;
+        rampedTargetTPS = 0.0;
         shooterPID.reset();
         hw.shooter.setPower(0.0);
     }
 
-    public void toggle() {
-        if (isRunning) off();
-        else on();
-    }
-
-    /**
-     * Main control loop. Call every OpMode loop.
-     * Open-loop: drives motor at fixed power.
-     * Closed-loop: runs PIDF against target TPS.
-     */
     public void update() {
         if (!isRunning) {
             hw.shooter.setPower(0.0);
             return;
         }
+
         if (openLoopMode) {
             hw.shooter.setPower(openLoopPower);
         } else {
-            // Flipped logic: use absolute velocity for PID and telemetry
-            double currentVelocity = Math.abs(hw.shooter.getVelocity()); // ticks/sec
-            double power = shooterPID.calculate(currentVelocity, targetTPS);
+            // Soft-start Ramping
+            if (rampedTargetTPS < targetTPS) {
+                rampedTargetTPS += 18.0; 
+                if (rampedTargetTPS > targetTPS) rampedTargetTPS = targetTPS;
+            }
+
+            double currentVelocity = Math.abs(hw.shooter.getVelocity()); 
+            double power = shooterPID.calculate(currentVelocity, rampedTargetTPS);
             hw.shooter.setPower(power);
         }
     }
@@ -108,20 +90,8 @@ public class ShooterSubsystem {
         return (Math.abs(hw.shooter.getVelocity()) * 60.0) / TICKS_PER_REV;
     }
 
-    public double getCurrentTPS() {
-        return Math.abs(hw.shooter.getVelocity());
-    }
-
     public double getTargetRPM() {
         return targetRPM;
-    }
-
-    public double getTargetTPS() {
-        return targetTPS;
-    }
-
-    public double getOpenLoopPower() {
-        return openLoopPower;
     }
 
     public boolean isRunning() {

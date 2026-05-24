@@ -63,8 +63,9 @@ public class ShooterTest extends OpMode {
         telemetry.addLine("====================");
         telemetry.addData("Control Strategy", shooter.isOpenLoop() ? "OPEN-LOOP (RAW)" : "CLOSED-LOOP (PID)");
         telemetry.addData("Current RPM", "%.0f", shooter.getCurrentRPM());
-        telemetry.addData("Configured Target RPM", tuneRPM);
-        telemetry.addData("Configured Target Power", "%.2f", testPower);
+        telemetry.addData("Target RPM", tuneRPM);
+        telemetry.addData("Target Power", "%.2f", testPower);
+        telemetry.addData("Is Running", shooter.isRunning());
         telemetry.update();
     }
 }

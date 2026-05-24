@@ -24,9 +24,11 @@ public class Hardware {
     public final Motor bR;
     public final DcMotor intake;
     public final DcMotorEx shooter;
+    public final DcMotorEx turret;
     public final Servo sorter1;
     public final Servo sorter2;
     public final Servo flipper;
+    public final Servo hood;
 
     public final NormalizedColorSensor ncs;
     public final DistanceSensor ds;
@@ -40,13 +42,20 @@ public class Hardware {
         this.bR = new Motor(hwMap, "br");//back right
         this.intake = hwMap.get(DcMotor.class, "intake");//intake
         this.shooter = hwMap.get(DcMotorEx.class, "shooter");
+        this.turret = hwMap.get(DcMotorEx.class, "turret");
 
         this.intake.setDirection(DcMotor.Direction.FORWARD);
         this.shooter.setDirection(DcMotor.Direction.FORWARD);
+        this.turret.setDirection(DcMotor.Direction.FORWARD);
+
+        this.turret.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        this.turret.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        this.turret.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
 
         this.sorter1 = hwMap.get(Servo.class, "sorter1");
         this.sorter2 = hwMap.get(Servo.class, "sorter2");
         this.flipper = hwMap.get(Servo.class, "flipper");
+        this.hood = hwMap.get(Servo.class, "hood");
 
         this.flipper.setDirection(Servo.Direction.FORWARD);
         this.sorter1.setDirection(Servo.Direction.FORWARD);
