@@ -13,9 +13,9 @@ public class TurretSubsystem {
     public static double TICKS_PER_DEGREE = 1.6122; 
 
     // PD Control Constants - Tuned for stability and no shaking
-    private double kP = 0.015; 
-    private double kI = 0.001;
-    private double kD = 0.005;
+    public static double kP = 0.015; 
+    public static double kI = 0.001;
+    public static double kD = 0.005;
     
     private double totalError = 0;
     private double lastError = 0;
@@ -97,9 +97,9 @@ public class TurretSubsystem {
     }
 
     public void setPID(double p, double i, double d) {
-        this.kP = p;
-        this.kI = i;
-        this.kD = d;
+        kP = p;
+        kI = i;
+        kD = d;
     }
 
     public double getTargetAngle() {
