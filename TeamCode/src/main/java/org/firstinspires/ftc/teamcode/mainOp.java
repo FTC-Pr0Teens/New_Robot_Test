@@ -70,6 +70,10 @@ public class mainOp extends OpMode {
     private boolean autoShootActive = false;
     private int sortStep = 0;
 
+    // Vision Smoothing
+    private double smoothedBearing = 0;
+    private final double VISION_SMOOTHING = 0.4; // Weight of new data (0.0 - 1.0)
+
     // Vision Calibration
     private int cameraGain = 25; // Lower default for bright environments
     private boolean lastDpadUp = false;
@@ -239,30 +243,23 @@ public class mainOp extends OpMode {
             AprilTagDetection bestDetection = null;
             List<AprilTagDetection> detections = vision.getAllDetections();
             
-            // Look for tags belonging to our alliance
             for (AprilTagDetection detection : detections) {
                 if (detection.metadata != null && detection.ftcPose != null) {
                     boolean isAllianceTag = (currentAlliance == Alliance.BLUE && BLUE_TAGS.contains(detection.id)) ||
                                            (currentAlliance == Alliance.RED && RED_TAGS.contains(detection.id));
-                    
                     if (isAllianceTag) {
                         bestDetection = detection;
-                        break; // Found one, good enough
+                        break;
                     }
                 }
             }
 
             if (bestDetection != null) {
-                // Aim turret using high-precision bearing from camera
-                turret.lockToTag(bestDetection.ftcPose.bearing);
-                
-                // Update Hood and distance-based RPM recommendation
-                hood.update(bestDetection.ftcPose.elevation);
-                
+                // Low-pass Filter for bearing to stop jitter
+                smoothedBearing = (bestDetection.ftcPose.bearing * VISION_SMOOTHING) + (smoothedBearing * (1.0 - VISION_SMOOTHING));
+                turret.lockToTag(smoothedBearing);
                 telemetry.addData("Turret Lock", "APRILTAG (ID %d)", bestDetection.id);
-                telemetry.addData("Dist to Goal", "%.2f m", hood.getDistance());
             } else {
-                // Fallback to Field Angle 0 (Goal) if no alliance tag is seen
                 turret.lockToFieldAngle(0.0, heading);
                 telemetry.addData("Turret Lock", "FIELD ANGLE (Searching...)");
             }
