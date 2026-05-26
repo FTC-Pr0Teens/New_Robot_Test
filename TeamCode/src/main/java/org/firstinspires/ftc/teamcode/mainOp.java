@@ -5,22 +5,25 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
-import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.util.ElapsedTime;
 import com.seattlesolvers.solverslib.drivebase.MecanumDrive;
 import com.seattlesolvers.solverslib.gamepad.GamepadEx;
 
 import org.firstinspires.ftc.robotcore.external.JavaUtil;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.teamcode.hardware.Hardware;
-import org.firstinspires.ftc.teamcode.hardware.HoodSubsystem;
 import org.firstinspires.ftc.teamcode.hardware.ShooterSubsystem;
 import org.firstinspires.ftc.teamcode.hardware.Sorter;
 import org.firstinspires.ftc.teamcode.hardware.TurretSubsystem;
 import org.firstinspires.ftc.teamcode.hardware.VisionSubsystem;
+import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
+import com.pedropathing.follower.Follower;
+import com.pedropathing.geometry.Pose;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * MAIN ROBOT OPMODE (Iterative)
@@ -28,7 +31,6 @@ import java.util.List;
 @TeleOp(name="Main Robot OpMode")
 public class mainOp extends OpMode {
     
-    // Hardware and Subsystems
     private Hardware hw;
     private MecanumDrive drive;
     private GamepadEx driverOp;
@@ -36,22 +38,18 @@ public class mainOp extends OpMode {
     private Sorter sorter;
     private ShooterSubsystem shooter;
     private TurretSubsystem turret;
-    private HoodSubsystem hood;
     private VisionSubsystem vision;
+    private Follower follower;
 
-    // Configuration
     private final double MANUAL_RPM = 1500.0;
-    private final double AUTO_SHOOT_RPM = 2300.0;
+    private final double AUTO_SHOOT_RPM = 3200.0;
     
-    // Alliance Settings
     private enum Alliance { BLUE, RED, NONE }
     private Alliance currentAlliance = Alliance.NONE;
     
-    // Target Tag IDs
     private final List<Integer> BLUE_TAGS = Arrays.asList(20);
     private final List<Integer> RED_TAGS = Arrays.asList(24);
 
-    // Logic States
     private boolean intakeRunning = false;
     private boolean lastIntakeButton = false;
     private boolean intakeReversed = false;
@@ -70,21 +68,25 @@ public class mainOp extends OpMode {
     private boolean autoShootActive = false;
     private int sortStep = 0;
 
-    // Vision Smoothing
-    private double smoothedBearing = 0;
-    private final double VISION_SMOOTHING = 0.4; // Weight of new data (0.0 - 1.0)
+    private int cameraGain = 25; 
+    
+    // Vision Preview Toggle
+    // TODO: DISABLE PREVIEW FOR COMPETITION TO IMPROVE PERFORMANCE
+    private boolean previewEnabled = true;
+    private boolean lastStartButton = false;
 
-    // Vision Calibration
-    private int cameraGain = 25; // Lower default for bright environments
-    private boolean lastDpadUp = false;
-    private boolean lastDpadDown = false;
-
-    // Target sequence for sorting
-    private Sorter.BallColor[] targets = {
-            Sorter.BallColor.GREEN,
-            Sorter.BallColor.PURPLE,
-            Sorter.BallColor.GREEN
+    private int sequenceIndex = 1; // Default: PGP
+    private Sorter.BallColor[][] possibleSequences = {
+        {Sorter.BallColor.GREEN, Sorter.BallColor.PURPLE, Sorter.BallColor.PURPLE},
+        {Sorter.BallColor.PURPLE, Sorter.BallColor.GREEN, Sorter.BallColor.PURPLE},
+        {Sorter.BallColor.PURPLE, Sorter.BallColor.PURPLE, Sorter.BallColor.GREEN}
     };
+    private String[] sequenceNames = {"G-P-P", "P-G-P", "P-P-G"};
+    private Sorter.BallColor[] targets;
+
+    private double smoothedBearing = 0;
+    private final double VISION_SMOOTHING = 0.15;
+    private ElapsedTime tagLostTimer = new ElapsedTime();
 
     @Override
     public void init() {
@@ -92,11 +94,12 @@ public class mainOp extends OpMode {
         sorter = new Sorter(hardwareMap, telemetry);
         shooter = new ShooterSubsystem(hardwareMap);
         turret = new TurretSubsystem(hardwareMap);
-        hood = new HoodSubsystem(hardwareMap);
         vision = new VisionSubsystem(hardwareMap);
 
         drive = new MecanumDrive(hw.fL, hw.fR, hw.bL, hw.bR);
         driverOp = new GamepadEx(gamepad1);
+        follower = Constants.createFollower(hardwareMap);
+        follower.setStartingPose(new Pose(0, 0, 0));
 
         imu = hardwareMap.get(IMU.class, "imu");
         IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
@@ -105,251 +108,191 @@ public class mainOp extends OpMode {
         imu.initialize(parameters);
         imu.resetYaw();
 
-        // Initial Hardware Positions
         sorter.moveToSlot(0); 
-        hw.flipper.setPosition(0.15); // LOW (Ready to receive)
-
+        hw.flipper.setPosition(0.15);
         hw.ncs.setGain(2.0f);
-        hood.setPosition(0.36); // Set to HOOD_MIN initially
+        targets = possibleSequences[sequenceIndex];
     }
 
     @Override
     public void init_loop() {
-        // Alliance Selection during Init
+        // Alliance Selection
         if (gamepad1.x) currentAlliance = Alliance.BLUE;
         if (gamepad1.b) currentAlliance = Alliance.RED;
 
-        // Camera Gain Calibration
-        if (gamepad1.dpad_up && !lastDpadUp) cameraGain = Math.min(255, cameraGain + 5);
-        if (gamepad1.dpad_down && !lastDpadDown) cameraGain = Math.max(0, cameraGain - 5);
-        lastDpadUp = gamepad1.dpad_up;
-        lastDpadDown = gamepad1.dpad_down;
+        // Sequence Selection
+        if (gamepad1.dpad_left)  sequenceIndex = 0;
+        if (gamepad1.dpad_up)    sequenceIndex = 1;
+        if (gamepad1.dpad_right) sequenceIndex = 2;
+        targets = possibleSequences[sequenceIndex];
 
-        // Apply settings (Exposure remains at 6ms to prevent blur)
+        // Camera Gain Tuning
+        if (gamepad1.left_trigger > 0.5) cameraGain = Math.max(0, cameraGain - 1);
+        if (gamepad1.right_trigger > 0.5) cameraGain = Math.min(255, cameraGain + 1);
         vision.setManualExposure(6, cameraGain);
 
-        telemetry.addData("Status", "READY - Select Alliance");
-        telemetry.addData("Vision", vision.getCameraState());
-        telemetry.addData("Camera Gain", cameraGain);
-        telemetry.addData("Alliance", currentAlliance == Alliance.NONE ? "PRESS X (Blue) or B (Red)" : currentAlliance);
-        telemetry.addLine("\nControls: X for BLUE, B for RED");
-        telemetry.addLine("Calibrate Gain: Dpad UP/DOWN");
+        // Turret Zeroing (A Button during Init)
+        if (gamepad1.a) {
+            turret.resetEncoder();
+        }
+
+        telemetry.addData("Alliance", currentAlliance == Alliance.NONE ? "X (Blue) / B (Red)" : currentAlliance);
+        telemetry.addData("Sequence", sequenceNames[sequenceIndex]);
+        telemetry.addData("Gain", cameraGain);
+        telemetry.addLine("\nA: ZERO TURRET");
         telemetry.update();
     }
 
     @Override
     public void loop() {
-        // --- 1. FIELD CENTRIC DRIVING ---
+        follower.update();
         double heading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
-        drive.driveFieldCentric(
-                -driverOp.getLeftX(),
-                -driverOp.getLeftY(),
-                -driverOp.getRightX(),
-                heading
-        );
+        drive.driveFieldCentric(-driverOp.getLeftX(), -driverOp.getLeftY(), -driverOp.getRightX(), heading);
 
-        // --- 2. INTAKE CONTROL ---
-        boolean currentIntakeButton = gamepad1.a;
-        if (currentIntakeButton && !lastIntakeButton) {
-            intakeRunning = !intakeRunning;
+        // --- CAMERA PREVIEW TOGGLE (Start Button) ---
+        boolean currentStart = gamepad1.start;
+        if (currentStart && !lastStartButton) {
+            previewEnabled = !previewEnabled;
+            vision.setPreviewEnabled(previewEnabled);
         }
-        lastIntakeButton = currentIntakeButton;
+        lastStartButton = currentStart;
 
-        boolean currentIntakeReverseButton = gamepad1.right_bumper;
-        if (currentIntakeReverseButton && !lastIntakeReverseButton) {
-            intakeReversed = !intakeReversed;
-        }
-        lastIntakeReverseButton = currentIntakeReverseButton;
+        // --- INTAKE & OUTTAKE ---
+        boolean currentIntake = gamepad1.a;
+        if (currentIntake && !lastIntakeButton) intakeRunning = !intakeRunning;
+        lastIntakeButton = currentIntake;
+
+        boolean currentRev = gamepad1.right_bumper;
+        if (currentRev && !lastIntakeReverseButton) intakeReversed = !intakeReversed;
+        lastIntakeReverseButton = currentRev;
         
-        double intakePower = 0.0;
+        double intakePower = 0;
         if (intakeRunning && !sorter.isBusy()) {
             intakePower = intakeReversed ? -0.8 : 0.8;
-            
-            // Flipper Management
-            if (intakeReversed) {
-                hw.flipper.setPosition(0.0); // Lift for outtake
-            } else {
-                hw.flipper.setPosition(0.15); // Lower for holding/sorting
-            }
+            hw.flipper.setPosition(intakeReversed ? 0.0 : 0.15);
         }
-        hw.intake.setPower(intakePower);
+        if (!sorter.isBusy()) {
+            hw.intake.setPower(intakePower);
+        }
 
-        // --- 3. MANUAL SHOOTER CONTROL ---
-        boolean currentBButton = gamepad1.b;
-        if (currentBButton && !lastBButton) {
+        // --- SHOOT SEQUENCE ---
+        if (gamepad1.b && !lastBButton) {
             autoShootActive = false;
             shooterRunning = !shooterRunning;
-            if (shooterRunning) {
-                shooter.setTargetRPM(MANUAL_RPM);
-                shooter.on();
-            } else {
-                shooter.off();
-            }
+            if (shooterRunning) shooter.setTargetRPM(MANUAL_RPM);
+            else shooter.off();
         }
-        lastBButton = currentBButton;
+        lastBButton = gamepad1.b;
 
-        // --- 4. SHOOT SEQUENCE (AUTO or MANUAL) ---
-        boolean currentXButton = gamepad1.x;
-        if (currentXButton && !lastXButton) {
+        if (gamepad1.x && !lastXButton) {
             autoShootActive = true;
             shooterRunning = true;
             shooter.setTargetRPM(AUTO_SHOOT_RPM);
             shooter.on();
         }
-        lastXButton = currentXButton;
+        lastXButton = gamepad1.x;
 
-        if (autoShootActive) {
-            if (!sorter.isBusy()) {
-                double currentRPM = shooter.getCurrentRPM();
-                // Sequence check: within +/- 250 RPM of target speed
-                if (Math.abs(currentRPM - AUTO_SHOOT_RPM) <= 250) {
-                    if (autoSortingEnabled) {
-                        if (sortStep < targets.length) {
-                            // Try to find the specific color
-                            if (sorter.sortToColor(targets[sortStep])) {
-                                sorter.startTransfer();
-                                sortStep++;
-                            } else {
-                                // Specific color not found, skip to next in sequence
-                                sortStep++;
-                            }
-                        } else {
-                            // Finished the 3-ball target sequence
-                            autoShootActive = false;
-                            sortStep = 0;
-                        }
+        if (autoShootActive && !sorter.isBusy()) {
+            if (Math.abs(shooter.getCurrentRPM() - AUTO_SHOOT_RPM) <= 100) {
+                if (autoSortingEnabled) {
+                    if (sortStep < targets.length) {
+                        if (sorter.sortToColor(targets[sortStep])) sorter.startTransfer();
+                        sortStep++;
                     } else {
-                        // MANUAL MODE: Just fire from whatever slot you chose
-                        sorter.startTransfer();
                         autoShootActive = false;
+                        sortStep = 0;
                     }
+                } else {
+                    sorter.startTransfer();
+                    autoShootActive = false;
                 }
             }
         }
 
-        // --- 5. SUBSYSTEM UPDATES (NON-BLOCKING) ---
         shooter.update();
-        sorter.update(shooter); // Sorter state machine handles the fire sequence
-        
-        // --- TURRET CONTROL ---
-        // Toggle Target Lock with Left Bumper
+        sorter.update(shooter); 
+
+        // --- TURRET & VISION ---
         boolean currentLB = gamepad1.left_bumper;
         if (currentLB && !lastLB) {
             turretLockEnabled = !turretLockEnabled;
+            // Ensure vision processing is active if locking is enabled
+            if (turretLockEnabled) {
+                previewEnabled = true;
+                vision.setPreviewEnabled(true);
+            }
         }
         lastLB = currentLB;
 
-        if (turretLockEnabled) {
-            AprilTagDetection bestDetection = null;
-            List<AprilTagDetection> detections = vision.getAllDetections();
-            
-            for (AprilTagDetection detection : detections) {
-                if (detection.metadata != null && detection.ftcPose != null) {
-                    boolean isAllianceTag = (currentAlliance == Alliance.BLUE && BLUE_TAGS.contains(detection.id)) ||
-                                           (currentAlliance == Alliance.RED && RED_TAGS.contains(detection.id));
-                    if (isAllianceTag) {
-                        bestDetection = detection;
-                        break;
-                    }
+        List<AprilTagDetection> detections = vision.getAllDetections();
+        AprilTagDetection best = null;
+        for (AprilTagDetection d : detections) {
+            if (d.metadata != null && d.ftcPose != null) {
+                if ((currentAlliance == Alliance.BLUE && BLUE_TAGS.contains(d.id)) ||
+                    (currentAlliance == Alliance.RED && RED_TAGS.contains(d.id))) {
+                    best = d; break;
                 }
             }
+        }
 
-            if (bestDetection != null) {
-                // Low-pass Filter for bearing to stop jitter
-                smoothedBearing = (bestDetection.ftcPose.bearing * VISION_SMOOTHING) + (smoothedBearing * (1.0 - VISION_SMOOTHING));
+        if (turretLockEnabled) {
+            if (best != null) {
+                smoothedBearing = (best.ftcPose.bearing * VISION_SMOOTHING) + (smoothedBearing * (1.0 - VISION_SMOOTHING));
                 turret.lockToTag(smoothedBearing);
-                telemetry.addData("Turret Lock", "APRILTAG (ID %d)", bestDetection.id);
-            } else {
+                tagLostTimer.reset();
+            } else if (tagLostTimer.seconds() > 0.5) {
+                // Only snap to field angle 0 if tag is lost for > 0.5s
                 turret.lockToFieldAngle(0.0, heading);
-                telemetry.addData("Turret Lock", "FIELD ANGLE (Searching...)");
             }
+            // else: hold last targetAngle while searching for tag
         } else {
-            // Manual rotation with triggers
-            double manualTurretPower = gamepad1.right_trigger - gamepad1.left_trigger;
-            if (Math.abs(manualTurretPower) > 0.05) {
-                turret.setManualPower(manualTurretPower * 0.4);
-            } else {
-                turret.setManualPower(0);
-            }
-            telemetry.addData("Turret Lock", "MANUAL");
+            double p = gamepad1.right_trigger - gamepad1.left_trigger;
+            if (Math.abs(p) > 0.05) turret.setManualPower(p * 0.4);
+            else turret.setManualPower(0);
         }
         turret.update();
 
-        // --- 6. MODE TOGGLE ---
-        boolean currentYButton = gamepad1.y;
-        if (currentYButton && !lastYButton) {
-            autoSortingEnabled = !autoSortingEnabled;
-            hw.flipper.setPosition(0.15);
-        }
-        lastYButton = currentYButton;
+        // --- UTILS ---
+        if (gamepad1.y && !lastYButton) autoSortingEnabled = !autoSortingEnabled;
+        lastYButton = gamepad1.y;
 
-        // --- 7. AUTOMATIC RECORDING & MANUAL SORTER ---
+        NormalizedRGBA c = hw.ncs.getNormalizedColors();
+        double h = JavaUtil.colorToHue(c.toColor());
         if (!sorter.isBusy()) {
-            NormalizedRGBA colors = hw.ncs.getNormalizedColors();
-            double currentHue = JavaUtil.colorToHue(colors.toColor());
-            
-            if (autoSortingEnabled) {
-                if (intakeRunning) {
-                    if (intakeReversed) {
-                        sorter.scanAndRemove(currentHue, colors.alpha);
-                    } else {
-                        sorter.scanAndRecord(currentHue, colors.alpha);
-                    }
-                }
-            } else {
-                if (gamepad1.dpad_up)    sorter.moveToSlot(0);
+            if (autoSortingEnabled && intakeRunning) {
+                if (intakeReversed) sorter.scanAndRemove(c.alpha);
+                else sorter.scanAndRecord(h, c.alpha);
+            } else if (!autoSortingEnabled) {
+                if (gamepad1.dpad_up) sorter.moveToSlot(0);
                 if (gamepad1.dpad_right) sorter.moveToSlot(1);
-                if (gamepad1.dpad_down)  sorter.moveToSlot(2);
+                if (gamepad1.dpad_down) sorter.moveToSlot(2);
             }
         }
-
-        // --- 8. UTILITIES ---
-        if (gamepad1.back) {
-            sorter.reset();
-            sortStep = 0;
-            autoShootActive = false;
-            sorter.moveToSlot(0);
-            hw.flipper.setPosition(0.15);
-        }
-        
-        if (gamepad1.dpad_left) {
-            imu.resetYaw();
-        }
+        if (gamepad1.dpad_left) imu.resetYaw();
 
         // --- 9. TELEMETRY ---
+        telemetry.addData("Preview", previewEnabled ? "ON" : "OFF (Start Button to toggle)");
         telemetry.addData("Alliance", currentAlliance);
-        telemetry.addData("Camera Gain", cameraGain);
         
-        // --- AprilTag Vision Diagnostics ---
-        List<AprilTagDetection> currentDetections = vision.getAllDetections();
-        if (currentDetections != null && !currentDetections.isEmpty()) {
-            telemetry.addData("Tags Visible", currentDetections.size());
-            for (AprilTagDetection detection : currentDetections) {
-                if (detection.metadata != null) {
-                    telemetry.addLine(String.format(" > ID %d (%s) Brng: %.1f", 
-                        detection.id, detection.metadata.name, detection.ftcPose.bearing));
-                } else {
-                    telemetry.addLine(String.format(" > ID %d (Unknown) - Move closer", detection.id));
-                }
-            }
+        if (detections.isEmpty()) {
+            telemetry.addLine("Vision: No tags seen");
         } else {
-            telemetry.addData("Vision Status", "No Tags Seen");
+            for (AprilTagDetection d : detections) {
+                telemetry.addLine(String.format(Locale.US, "ID %d: Bearing %.1f", d.id, d.ftcPose != null ? d.ftcPose.bearing : 0));
+            }
         }
 
-        telemetry.addData("Turret Angle", "%.1f", turret.getCurrentAngle());
-        telemetry.addData("Recommended RPM", "%.0f", hood.getRecommendedRPM());
-        telemetry.addData("Shooter", shooterRunning ? (autoShootActive ? "SEQ-ACTIVE" : "ON") : "OFF");
-        telemetry.addData("RPM", "%.0f / %.0f", shooter.getCurrentRPM(), shooter.getTargetRPM());
-        telemetry.addData("Sort Mode", autoSortingEnabled ? "AUTO" : "MANUAL (Dpads)");
-        telemetry.addData("Sorter State", sorter.isBusy() ? "BUSY" : "READY");
+        telemetry.addData("RPM", "%.0f", shooter.getCurrentRPM());
         telemetry.addData("Memory", Arrays.toString(sorter.getRecordedColors()));
+        
+        Pose robotPose = follower.getPose();
+        telemetry.addData("Pose X", "%.2f", robotPose.getX());
+        telemetry.addData("Pose Y", "%.2f", robotPose.getY());
+        telemetry.addData("Pose Heading", "%.2f°", Math.toDegrees(robotPose.getHeading()));
+
         telemetry.update();
     }
 
     @Override
-    public void stop() {
-        if (vision != null) {
-            vision.close();
-        }
-    }
+    public void stop() { if (vision != null) vision.close(); }
 }

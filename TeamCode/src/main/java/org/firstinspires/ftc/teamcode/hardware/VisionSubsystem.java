@@ -19,19 +19,27 @@ public class VisionSubsystem {
     public VisionSubsystem(HardwareMap hardwareMap) {
         // Create the AprilTag processor with high-performance settings
         aprilTag = new AprilTagProcessor.Builder()
-                .setDrawAxes(false) // No need for overlays if preview is off
-                .setDrawCubeProjection(false)
-                .setDrawTagOutline(false)
+                .setDrawAxes(true)
+                .setDrawCubeProjection(true)
+                .setDrawTagOutline(true)
                 .build();
 
         // Create the vision portal
         visionPortal = new VisionPortal.Builder()
                 .setCamera(hardwareMap.get(WebcamName.class, "Webcam 1"))
                 .addProcessor(aprilTag)
-                .enableLiveView(true) // Disable preview for performance
+                .enableLiveView(true) 
+                .setAutoStopLiveView(false)
+                .setStreamFormat(VisionPortal.StreamFormat.MJPEG)
                 .build();
-        
-        // Note: Exposure/Gain must be set while the portal is running
+    }
+
+    /**
+     * Toggles the AprilTag processor (which controls annotations in the preview).
+     * @param enabled True to show annotations and process tags, False to hide them.
+     */
+    public void setPreviewEnabled(boolean enabled) {
+        visionPortal.setProcessorEnabled(aprilTag, enabled);
     }
 
     /**

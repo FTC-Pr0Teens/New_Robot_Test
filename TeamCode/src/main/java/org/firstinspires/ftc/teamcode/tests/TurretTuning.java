@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode;
+package org.firstinspires.ftc.teamcode.tests;
 
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
@@ -31,9 +31,9 @@ public class TurretTuning extends OpMode {
         double step;
         switch(selection) {
             case 0: step = 5.0; break;
-            case 1: step = 0.001; break;
-            case 2: step = 0.0001; break;
-            case 3: step = 0.0005; break; // Changed to be unique and useful
+            case 1: step = 0.001; break; // kP step
+            case 2: step = 0.0001; break; // kI step
+            case 3: step = 0.00005; break; // kD step
             case 4: step = 0.1; break;
             default: step = 0;
         }
@@ -48,13 +48,14 @@ public class TurretTuning extends OpMode {
         turret.setTargetAngle(targetAngle);
         turret.update();
 
-        String selName = "";
+        String selName;
         switch(selection) {
             case 0: selName = "Target Angle"; break;
             case 1: selName = "kP"; break;
             case 2: selName = "kI"; break;
             case 3: selName = "kD"; break;
             case 4: selName = "TicksPerDegree"; break;
+            default: selName = "Unknown"; break;
         }
 
         telemetry.addData("Selection", selName);
