@@ -1,11 +1,13 @@
 package org.firstinspires.ftc.teamcode.hardware;
 
+import com.bylazar.configurables.annotations.Configurable;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
+@Configurable
 public class TurretSubsystem {
     private final Hardware hw;
 

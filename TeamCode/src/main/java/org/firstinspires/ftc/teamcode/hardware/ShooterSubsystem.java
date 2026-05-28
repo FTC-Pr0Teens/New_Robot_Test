@@ -1,8 +1,11 @@
 package org.firstinspires.ftc.teamcode.hardware;
 
+import com.bylazar.configurables.annotations.Configurable;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.seattlesolvers.solverslib.controller.PIDController;
 
+
+@Configurable
 public class ShooterSubsystem {
     private final Hardware hw;
     private final PIDController shooterPID;
