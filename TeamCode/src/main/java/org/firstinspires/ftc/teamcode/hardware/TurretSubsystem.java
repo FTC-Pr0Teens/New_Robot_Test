@@ -48,7 +48,7 @@ public class TurretSubsystem {
     private double shootRPM = MIN_RPM;
 
     // ---------------- GOAL POSITION (INCHES) ----------------
-    private double goalX = 0; 
+    private double goalX = 6.0;
     private double goalY = 132.0; 
 
     public TurretSubsystem(HardwareMap hwMap) {

@@ -44,7 +44,7 @@ public class mainOp extends OpMode {
     private TelemetryManager telemetryM;
     private boolean slowMode = false;
     private double slowModeMultiplier = 0.5;
-    private boolean isRobotCentric = true;
+    private boolean isRobotCentric = false; // Field Centric by default
 
     public static Pose startingPose = new Pose(0, 0, Math.toRadians(90));
 
@@ -91,6 +91,7 @@ public class mainOp extends OpMode {
 
         turret = new TurretSubsystem(hardwareMap);
         turret.setFollower(follower);
+        turret.setGoalPosition(6, 132); // Default to Blue goal
         vision = new VisionSubsystem(hardwareMap);
 
         imu = hardwareMap.get(IMU.class, "imu");
