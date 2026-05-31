@@ -9,9 +9,9 @@ public class Sorter {
 
     public enum BallColor { PURPLE, GREEN, NONE }
 
-    private static final double POS_1 = 0.17;
+    private static final double POS_1 = 0.15;
     private static final double POS_2 = 0.54;
-    private static final double POS_3 = 0.86;
+    private static final double POS_3 = 0.89;
     private static final double SERVO2_OFFSET = 0.05;
 
     private Hardware hw;

@@ -1,129 +1,190 @@
 package org.firstinspires.ftc.teamcode.hardware;
 
-import com.bylazar.configurables.annotations.Configurable;
-import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
-import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import com.pedropathing.follower.Follower;
+import com.pedropathing.geometry.Pose;
 
-@Configurable
 public class TurretSubsystem {
-    private final Hardware hw;
 
-    // --- TUNABLE CONSTANTS ---
+    private final DcMotorEx turret;
+    private final Servo hood;
+
+    private final Hardware hw;
+    private Follower follower;
+
+    // ---------------- TURRET PD CONTROL ----------------
     public static double TICKS_PER_DEGREE = 1.6122; 
-    
-    // Software PD Control Constants
-    public static double kP = 0.035; 
+    public static double kP = 0.02; 
     public static double kI = 0.0;
-    public static double kD = 0.001;
+    public static double kD = 0.0005;
     
     private double lastError = 0;
     private double totalError = 0;
-    private final double ANGLE_TOLERANCE = 5; // degrees - increased to reduce "fixation"
-    private final double MAX_AUTO_POWER = 0.4; // reduced to prevent losing tag during rapid motion
-
-    private final ElapsedTime loopTimer = new ElapsedTime();
+    private double manualTargetAngle = 0;
+    private double lastCalculatedTarget = 0; 
+    private double lastTargetFieldAngle = 0; // Added for debugging
+    private boolean useManualTarget = false;
+    
+    private final double ANGLE_TOLERANCE = 4.0; 
+    private final double MAX_POWER = 0.25; 
 
     // --- MECHANICAL LIMITS ---
     public static double MIN_ANGLE = -280.0;
     public static double MAX_ANGLE = 720.0;
 
-    private double targetAngle = 0.0; 
-    private boolean autoMode = true;
+    private final ElapsedTime loopTimer = new ElapsedTime();
+
+    // ---------------- HOOD / SHOOTER ----------------
+    private final double HOOD_MIN = 0.36;
+    private final double HOOD_MAX = 0.75;
+    
+    private final double MIN_DISTANCE_INCHES = 12.0;
+    private final double MAX_DISTANCE_INCHES = 80.0;
+
+    private final double MIN_RPM = 2000;
+    private final double MAX_RPM = 4000;
+    private double shootRPM = MIN_RPM;
+
+    // ---------------- GOAL POSITION (INCHES) ----------------
+    private double goalX = 0; 
+    private double goalY = 0; 
 
     public TurretSubsystem(HardwareMap hwMap) {
         this.hw = Hardware.getInstance(hwMap);
-        hw.turret.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        
+        turret = hw.turret;
+        turret.setMode(DcMotorEx.RunMode.RUN_USING_ENCODER);
+        turret.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
+
+        hood = hw.hood;
         loopTimer.reset();
+    }
+
+    public void setFollower(Follower follower) {
+        this.follower = follower;
+    }
+
+    public void setkP(double newkP) { kP = newkP; }
+    public void setkD(double newkD) { kD = newkD; }
+    public double getShootRPM() { return shootRPM; }
+
+    public void update() {
+        updateInternal(null);
+    }
+
+    public void update(Double tx) {
+        updateInternal(tx);
     }
 
     /**
-     * Updates the turret power using software PID control.
+     * Unified update logic using Pedro Heading (90=Straight, 0=Right)
      */
-    public void update() {
+    private void updateInternal(Double tx) {
         double deltaTime = loopTimer.seconds();
-        if (deltaTime < 0.001) deltaTime = 0.001; 
+        deltaTime = Math.max(deltaTime, 0.01);
         loopTimer.reset();
 
-        double currentAngle = getCurrentAngle();
-        double power;
+        double goalAngleDeg;
 
-        if (autoMode) {
-            double constrainedTarget = Range.clip(targetAngle, MIN_ANGLE, MAX_ANGLE);
-            double error = constrainedTarget - currentAngle;
-            
-            // Integral calculation (for completeness, even if kI=0)
-            if (Math.abs(error) < 5) totalError += error * deltaTime;
-            else totalError = 0;
-
-            // Derivative calculation
-            double dTerm = (error - lastError) / deltaTime * kD;
-            
-            // Power calculation (PID)
-            if (Math.abs(error) < ANGLE_TOLERANCE) {
-                power = 0;
-                totalError = 0;
-            } else {
-                power = Range.clip(error * kP + totalError * kI + dTerm, -MAX_AUTO_POWER, MAX_AUTO_POWER);
-            }
-            
-            lastError = error;
+        if (useManualTarget) {
+            goalAngleDeg = manualTargetAngle;
         } else {
-            // Manual mode power check for limits
-            power = hw.turret.getPower();
-            if ((currentAngle <= MIN_ANGLE && power < 0) || (currentAngle >= MAX_ANGLE && power > 0)) {
-                power = 0;
+            if (follower == null) return;
+
+            Pose robotPose = follower.getPose();
+            if (robotPose == null) return;
+            
+            // PEDRO MATH: X is Side-to-Side (cos), Y is Forward-Backward (sin)
+            double dx = goalX - robotPose.getX();
+            double dy = goalY - robotPose.getY();
+
+            // Field angle where 0 is Right, 90 is Forward
+            double targetAngleField = Math.atan2(dy, dx); 
+            lastTargetFieldAngle = Math.toDegrees(targetAngleField);
+            
+            // Calculate error. Since Pedro Heading 90->0 is Right (+), 
+            // and our turret is + Right, the target is (Robot Heading - Target Field Angle)
+            double targetAngleRobot = normalizeRadians(robotPose.getHeading() - targetAngleField);
+            
+            goalAngleDeg = Math.toDegrees(targetAngleRobot);
+
+            if (tx != null) {
+                goalAngleDeg += tx; // tx positive is Right
             }
-            lastError = 0;
-            totalError = 0;
+
+            lastCalculatedTarget = goalAngleDeg;
+            
+            // ---------------- HOOD & SHOOTER ----------------
+            double distance = Math.hypot(dx, dy); 
+            distance = Range.clip(distance, MIN_DISTANCE_INCHES, MAX_DISTANCE_INCHES);
+
+            double normalized = (distance - MIN_DISTANCE_INCHES) / (MAX_DISTANCE_INCHES - MIN_DISTANCE_INCHES);
+            double hoodPos = HOOD_MIN + Math.pow(normalized, 3.0) * (HOOD_MAX - HOOD_MIN);
+            hood.setPosition(Range.clip(hoodPos, HOOD_MIN, HOOD_MAX));
+
+            shootRPM = MIN_RPM + normalized * 1000; 
+            shootRPM = Range.clip(shootRPM, MIN_RPM, MAX_RPM);
         }
 
-        hw.turret.setPower(power);
+        // Apply Mechanical Limits
+        goalAngleDeg = Range.clip(goalAngleDeg, MIN_ANGLE, MAX_ANGLE);
+
+        double currentAngleDeg = getTurretAngleDegrees();
+        double error = wrapDegrees(goalAngleDeg - currentAngleDeg);
+        
+        if (Math.abs(error) < 5) totalError += error * deltaTime;
+        else totalError = 0;
+        
+        double dTerm = (error - lastError) / deltaTime * kD;
+        double power = (Math.abs(error) < ANGLE_TOLERANCE) ? 0 : Range.clip(error * kP + totalError * kI + dTerm, -MAX_POWER, MAX_POWER);
+
+        turret.setPower(power);
+        lastError = error;
     }
 
-    public void setTargetAngle(double degrees) {
-        this.targetAngle = degrees;
-        this.autoMode = true;
+    private double getTurretAngleDegrees() {
+        return (double)turret.getCurrentPosition() / TICKS_PER_DEGREE;
     }
 
-    public void lockToTag(double bearing) {
-        setTargetAngle(getCurrentAngle() + bearing);
+    private double normalizeRadians(double angle) {
+        while (angle > Math.PI) angle -= 2*Math.PI;
+        while (angle < -Math.PI) angle += 2*Math.PI;
+        return angle;
     }
 
-    public void lockToFieldAngle(double fieldTargetAngle, double robotHeading) {
-        double relativeAngle = AngleUnit.normalizeDegrees(fieldTargetAngle - robotHeading);
-        setTargetAngle(relativeAngle);
+    private double wrapDegrees(double angle) {
+        while (angle > 180) angle -= 360;
+        while (angle < -180) angle += 360;
+        return angle;
     }
 
-    public void setManualPower(double power) {
-        this.autoMode = false;
-        hw.turret.setPower(power);
+    public void setGoalPosition(double xInches, double yInches) {
+        goalX = xInches;
+        goalY = yInches;
+        useManualTarget = false;
     }
 
-    public double getCurrentAngle() {
-        return hw.turret.getCurrentPosition() / TICKS_PER_DEGREE;
+    public void setTargetAngle(double angleDeg) {
+        manualTargetAngle = angleDeg;
+        useManualTarget = true;
     }
-
+    
     public void resetEncoder() {
-        hw.turret.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        hw.turret.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        targetAngle = 0;
+        turret.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
+        turret.setMode(DcMotorEx.RunMode.RUN_USING_ENCODER);
+        manualTargetAngle = 0;
         lastError = 0;
         totalError = 0;
-        autoMode = true;
-    }
-
-    public boolean isOnTarget() {
-        return Math.abs(targetAngle - getCurrentAngle()) < ANGLE_TOLERANCE;
     }
     
-    public double getRequestedPower() {
-        return hw.turret.getPower();
-    }
-    
-    public boolean isAutoMode() {
-        return autoMode;
-    }
+    public void setManualPower(double power) { turret.setPower(power); }
+    public double getCurrentAngle() { return getTurretAngleDegrees(); }
+    public double getTargetAngle() { return useManualTarget ? manualTargetAngle : lastCalculatedTarget; }
+    public double getTargetFieldAngle() { return lastTargetFieldAngle; }
+    public double getError() { return wrapDegrees(getTargetAngle() - getCurrentAngle()); }
+    public void lockToTag(double bearing) { update(bearing); }
 }

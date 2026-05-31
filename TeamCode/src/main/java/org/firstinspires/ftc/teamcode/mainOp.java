@@ -1,16 +1,16 @@
 package org.firstinspires.ftc.teamcode;
 
+import com.bylazar.configurables.annotations.Configurable;
+import com.bylazar.telemetry.PanelsTelemetry;
+import com.bylazar.telemetry.TelemetryManager;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
-import com.qualcomm.robotcore.util.ElapsedTime;
-import com.seattlesolvers.solverslib.drivebase.MecanumDrive;
 import com.seattlesolvers.solverslib.gamepad.GamepadEx;
 
 import org.firstinspires.ftc.robotcore.external.JavaUtil;
-import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.teamcode.hardware.Hardware;
 import org.firstinspires.ftc.teamcode.hardware.ShooterSubsystem;
 import org.firstinspires.ftc.teamcode.hardware.Sorter;
@@ -26,13 +26,13 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * MAIN ROBOT OPMODE (Iterative)
+ * MAIN ROBOT OPMODE (Iterative) - TeleOp Only
  */
+@Configurable
 @TeleOp(name="Main Robot OpMode")
 public class mainOp extends OpMode {
     
     private Hardware hw;
-    private MecanumDrive drive;
     private GamepadEx driverOp;
     private IMU imu;
     private Sorter sorter;
@@ -41,39 +41,33 @@ public class mainOp extends OpMode {
     private VisionSubsystem vision;
     private Follower follower;
 
+    private TelemetryManager telemetryM;
+    private boolean slowMode = false;
+    private double slowModeMultiplier = 0.5;
+    private boolean isRobotCentric = true;
+
+    public static Pose startingPose = new Pose(0, 0, 90);
+
     private final double MANUAL_RPM = 1500.0;
     private final double AUTO_SHOOT_RPM = 3200.0;
     
     private enum Alliance { BLUE, RED, NONE }
     private Alliance currentAlliance = Alliance.NONE;
     
-    private final List<Integer> BLUE_TAGS = Arrays.asList(20);
-    private final List<Integer> RED_TAGS = Arrays.asList(24);
-
     private boolean intakeRunning = false;
-    private boolean lastIntakeButton = false;
     private boolean intakeReversed = false;
-    private boolean lastIntakeReverseButton = false;
-    
     private boolean shooterRunning = false;
-    private boolean lastBButton = false;
-
     private boolean autoSortingEnabled = true;
-    private boolean lastYButton = false;
-
     private boolean turretLockEnabled = true;
-    private boolean lastLB = false;
-
-    private boolean lastXButton = false;
     private boolean autoShootActive = false;
     private int sortStep = 0;
 
     private int cameraGain = 25; 
-    
-    // Vision Preview Toggle
-    // TODO: DISABLE PREVIEW FOR COMPETITION TO IMPROVE PERFORMANCE
     private boolean previewEnabled = true;
-    private boolean lastStartButton = false;
+
+    // Edge Detection States
+    private boolean lastA = false, lastB = false, lastX = false, lastY = false;
+    private boolean lastLB = false, lastRB = false, lastStart = false, lastRSB = false;
 
     private int sequenceIndex = 1; // Default: PGP
     private Sorter.BallColor[][] possibleSequences = {
@@ -84,22 +78,20 @@ public class mainOp extends OpMode {
     private String[] sequenceNames = {"G-P-P", "P-G-P", "P-P-G"};
     private Sorter.BallColor[] targets;
 
-    private double smoothedBearing = 0;
-    private final double VISION_SMOOTHING = 0.15;
-    private ElapsedTime tagLostTimer = new ElapsedTime();
-
     @Override
     public void init() {
         hw = Hardware.getInstance(hardwareMap);
         sorter = new Sorter(hardwareMap, telemetry);
         shooter = new ShooterSubsystem(hardwareMap);
-        turret = new TurretSubsystem(hardwareMap);
-        vision = new VisionSubsystem(hardwareMap);
 
-        drive = new MecanumDrive(hw.fL, hw.fR, hw.bL, hw.bR);
         driverOp = new GamepadEx(gamepad1);
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(0, 0, 0));
+        follower.setStartingPose(startingPose == null ? new Pose() : startingPose);
+        follower.update();
+
+        turret = new TurretSubsystem(hardwareMap);
+        turret.setFollower(follower);
+        vision = new VisionSubsystem(hardwareMap);
 
         imu = hardwareMap.get(IMU.class, "imu");
         IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
@@ -112,13 +104,23 @@ public class mainOp extends OpMode {
         hw.flipper.setPosition(0.15);
         hw.ncs.setGain(2.0f);
         targets = possibleSequences[sequenceIndex];
+
+        telemetryM = PanelsTelemetry.INSTANCE.getTelemetry();
     }
 
     @Override
     public void init_loop() {
-        // Alliance Selection
-        if (gamepad1.x) currentAlliance = Alliance.BLUE;
-        if (gamepad1.b) currentAlliance = Alliance.RED;
+        // Alliance Selection & Goal Setting (Inches)
+        // Red Basket = Top Right (Far wall, right side)
+        // Blue Basket = Top Left (Far wall, left side)
+        if (gamepad1.x) {
+            currentAlliance = Alliance.BLUE;
+            turret.setGoalPosition(12, 132); 
+        }
+        if (gamepad1.b) {
+            currentAlliance = Alliance.RED;
+            turret.setGoalPosition(132, 132);
+        }
 
         // Sequence Selection
         if (gamepad1.dpad_left)  sequenceIndex = 0;
@@ -144,53 +146,73 @@ public class mainOp extends OpMode {
     }
 
     @Override
+    public void start() {
+        follower.startTeleopDrive();
+    }
+
+    @Override
     public void loop() {
         follower.update();
-        double heading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
-        drive.driveFieldCentric(-driverOp.getLeftX(), -driverOp.getLeftY(), -driverOp.getRightX(), heading);
+        telemetryM.update();
 
-        // --- CAMERA PREVIEW TOGGLE (Start Button) ---
-        boolean currentStart = gamepad1.start;
-        if (currentStart && !lastStartButton) {
+        // --- DRIVE CONTROL ---
+        double forward = -gamepad1.left_stick_y;
+        double strafe = -gamepad1.left_stick_x;
+        double turn = -gamepad1.right_stick_x;
+
+        if (gamepad1.right_stick_button && !lastRSB) slowMode = !slowMode;
+        lastRSB = gamepad1.right_stick_button;
+
+        if (slowMode) {
+            forward *= slowModeMultiplier;
+            strafe *= slowModeMultiplier;
+            turn *= slowModeMultiplier;
+        }
+
+        if (gamepad1.dpad_up) isRobotCentric = true;
+        if (gamepad1.dpad_down) isRobotCentric = false;
+
+        follower.setTeleOpDrive(forward, strafe, turn, isRobotCentric);
+
+        // --- CAMERA PREVIEW ---
+        if (gamepad1.start && !lastStart) {
             previewEnabled = !previewEnabled;
             vision.setPreviewEnabled(previewEnabled);
         }
-        lastStartButton = currentStart;
+        lastStart = gamepad1.start;
 
-        // --- INTAKE & OUTTAKE ---
-        boolean currentIntake = gamepad1.a;
-        if (currentIntake && !lastIntakeButton) intakeRunning = !intakeRunning;
-        lastIntakeButton = currentIntake;
+        // --- INTAKE ---
+        if (gamepad1.a && !lastA) intakeRunning = !intakeRunning;
+        lastA = gamepad1.a;
 
-        boolean currentRev = gamepad1.right_bumper;
-        if (currentRev && !lastIntakeReverseButton) intakeReversed = !intakeReversed;
-        lastIntakeReverseButton = currentRev;
+        if (gamepad1.right_bumper && !lastRB) intakeReversed = !intakeReversed;
+        lastRB = gamepad1.right_bumper;
         
-        double intakePower = 0;
-        if (intakeRunning && !sorter.isBusy()) {
-            intakePower = intakeReversed ? -0.8 : 0.8;
-            hw.flipper.setPosition(intakeReversed ? 0.0 : 0.15);
-        }
         if (!sorter.isBusy()) {
-            hw.intake.setPower(intakePower);
+            if (intakeRunning) {
+                hw.intake.setPower(intakeReversed ? -0.8 : 0.8);
+                hw.flipper.setPosition(intakeReversed ? 0.0 : 0.15);
+            } else {
+                hw.intake.setPower(0);
+            }
         }
 
-        // --- SHOOT SEQUENCE ---
-        if (gamepad1.b && !lastBButton) {
+        // --- SHOOT ---
+        if (gamepad1.b && !lastB) {
             autoShootActive = false;
             shooterRunning = !shooterRunning;
             if (shooterRunning) shooter.setTargetRPM(MANUAL_RPM);
             else shooter.off();
         }
-        lastBButton = gamepad1.b;
+        lastB = gamepad1.b;
 
-        if (gamepad1.x && !lastXButton) {
+        if (gamepad1.x && !lastX) {
             autoShootActive = true;
             shooterRunning = true;
             shooter.setTargetRPM(AUTO_SHOOT_RPM);
             shooter.on();
         }
-        lastXButton = gamepad1.x;
+        lastX = gamepad1.x;
 
         if (autoShootActive && !sorter.isBusy()) {
             if (Math.abs(shooter.getCurrentRPM() - AUTO_SHOOT_RPM) <= 100) {
@@ -212,49 +234,28 @@ public class mainOp extends OpMode {
         shooter.update();
         sorter.update(shooter); 
 
-        // --- TURRET & VISION ---
-        boolean currentLB = gamepad1.left_bumper;
-        if (currentLB && !lastLB) {
+        // --- TURRET ---
+        if (gamepad1.left_bumper && !lastLB) {
             turretLockEnabled = !turretLockEnabled;
-            // Ensure vision processing is active if locking is enabled
             if (turretLockEnabled) {
                 previewEnabled = true;
                 vision.setPreviewEnabled(true);
             }
         }
-        lastLB = currentLB;
+        lastLB = gamepad1.left_bumper;
 
         List<AprilTagDetection> detections = vision.getAllDetections();
-        AprilTagDetection best = null;
-        for (AprilTagDetection d : detections) {
-            if (d.metadata != null && d.ftcPose != null) {
-                if ((currentAlliance == Alliance.BLUE && BLUE_TAGS.contains(d.id)) ||
-                    (currentAlliance == Alliance.RED && RED_TAGS.contains(d.id))) {
-                    best = d; break;
-                }
-            }
-        }
-
         if (turretLockEnabled) {
-            if (best != null) {
-                smoothedBearing = (best.ftcPose.bearing * VISION_SMOOTHING) + (smoothedBearing * (1.0 - VISION_SMOOTHING));
-                turret.lockToTag(smoothedBearing);
-                tagLostTimer.reset();
-            } else if (tagLostTimer.seconds() > 0.5) {
-                // Only snap to field angle 0 if tag is lost for > 0.5s
-                turret.lockToFieldAngle(0.0, heading);
-            }
-            // else: hold last targetAngle while searching for tag
+            turret.update();
         } else {
             double p = gamepad1.right_trigger - gamepad1.left_trigger;
             if (Math.abs(p) > 0.05) turret.setManualPower(p * 0.4);
             else turret.setManualPower(0);
         }
-        turret.update();
 
         // --- UTILS ---
-        if (gamepad1.y && !lastYButton) autoSortingEnabled = !autoSortingEnabled;
-        lastYButton = gamepad1.y;
+        if (gamepad1.y && !lastY) autoSortingEnabled = !autoSortingEnabled;
+        lastY = gamepad1.y;
 
         NormalizedRGBA c = hw.ncs.getNormalizedColors();
         double h = JavaUtil.colorToHue(c.toColor());
@@ -270,26 +271,33 @@ public class mainOp extends OpMode {
         }
         if (gamepad1.dpad_left) imu.resetYaw();
 
-        // --- 9. TELEMETRY ---
-        telemetry.addData("Preview", previewEnabled ? "ON" : "OFF (Start Button to toggle)");
-        telemetry.addData("Alliance", currentAlliance);
+        // --- TELEMETRY ---
+        Pose currentPose = follower.getPose();
+        if (currentPose != null) {
+            telemetryM.debug("position", currentPose);
+        }
         
-        if (detections.isEmpty()) {
+        telemetry.addLine("--- TURRET DEBUG ---");
+        telemetry.addData("Lock Enabled", turretLockEnabled);
+        telemetry.addData("Alliance", currentAlliance);
+        telemetry.addData("Goal Field Angle", "%.2f°", turret.getTargetFieldAngle());
+        telemetry.addData("Robot Heading", "%.2f°", Math.toDegrees(follower.getPose().getHeading()));
+        telemetry.addData("Current Angle", "%.2f", turret.getCurrentAngle());
+        telemetry.addData("Target Angle", "%.2f", turret.getTargetAngle());
+        telemetry.addData("Error", "%.2f", turret.getError());
+        
+        telemetry.addLine("\n--- STATUS ---");
+        telemetry.addData("Drive Mode", isRobotCentric ? "ROBOT CENTRIC" : "FIELD CENTRIC");
+        telemetry.addData("RPM", shooter.getCurrentRPM());
+        telemetry.addData("Memory", Arrays.toString(sorter.getRecordedColors()));
+
+        if (detections == null || detections.isEmpty()) {
             telemetry.addLine("Vision: No tags seen");
         } else {
             for (AprilTagDetection d : detections) {
                 telemetry.addLine(String.format(Locale.US, "ID %d: Bearing %.1f", d.id, d.ftcPose != null ? d.ftcPose.bearing : 0));
             }
         }
-
-        telemetry.addData("RPM", "%.0f", shooter.getCurrentRPM());
-        telemetry.addData("Memory", Arrays.toString(sorter.getRecordedColors()));
-        
-        Pose robotPose = follower.getPose();
-        telemetry.addData("Pose X", "%.2f", robotPose.getX());
-        telemetry.addData("Pose Y", "%.2f", robotPose.getY());
-        telemetry.addData("Pose Heading", "%.2f°", Math.toDegrees(robotPose.getHeading()));
-
         telemetry.update();
     }
 
