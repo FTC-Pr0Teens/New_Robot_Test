@@ -46,7 +46,7 @@ public class mainOp extends OpMode {
     private double slowModeMultiplier = 0.5;
     private boolean isRobotCentric = true;
 
-    public static Pose startingPose = new Pose(0, 0, 90);
+    public static Pose startingPose = new Pose(0, 0, Math.toRadians(90));
 
     private final double MANUAL_RPM = 1500.0;
     private final double AUTO_SHOOT_RPM = 3200.0;
@@ -115,11 +115,11 @@ public class mainOp extends OpMode {
         // Blue Basket = Top Left (Far wall, left side)
         if (gamepad1.x) {
             currentAlliance = Alliance.BLUE;
-            turret.setGoalPosition(12, 132); 
+            turret.setGoalPosition(6, 132); 
         }
         if (gamepad1.b) {
             currentAlliance = Alliance.RED;
-            turret.setGoalPosition(132, 132);
+            turret.setGoalPosition(138, 132);
         }
 
         // Sequence Selection
