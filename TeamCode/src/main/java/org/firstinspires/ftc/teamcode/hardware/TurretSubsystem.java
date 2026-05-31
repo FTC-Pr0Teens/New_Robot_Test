@@ -38,8 +38,14 @@ public class TurretSubsystem {
     private final ElapsedTime loopTimer = new ElapsedTime();
 
     // ---------------- HOOD / SHOOTER ----------------
-    private final double HOOD_MIN = 0.36;
-    private final double HOOD_MAX = 0.75;
+    // Servo range: 0 to 1.0 = 0 to 300 degrees
+    private final double SERVO_RANGE_DEGREES = 300.0;
+    private final double HOOD_START_ANGLE_DEG = 12.5; // Physical angle at servo pos 0
+    
+    // Set your physical hood limits in DEGREES here (Relative to horizontal)
+    private final double HOOD_MIN_DEG = 12.5; // Starting physical angle
+    private final double HOOD_MAX_DEG = 22.0; // Max allowed angle from horizontal
+    
     private final double MIN_DISTANCE_INCHES = 12.0;
     private final double MAX_DISTANCE_INCHES = 80.0;
 
@@ -48,7 +54,7 @@ public class TurretSubsystem {
     private double shootRPM = MIN_RPM;
 
     // ---------------- GOAL POSITION (INCHES) ----------------
-    private double goalX = 6.0;
+    private double goalX = 6.0; 
     private double goalY = 132.0; 
 
     public TurretSubsystem(HardwareMap hwMap) {
@@ -85,22 +91,28 @@ public class TurretSubsystem {
             double dx = goalX - robotPose.getX();
             double dy = goalY - robotPose.getY();
 
-            // Field Angle: 0 = Right, 90 = Straight (Y axis)
             double targetAngleFieldRad = Math.atan2(dy, dx); 
             lastTargetFieldAngle = Math.toDegrees(targetAngleFieldRad);
             
-            // Relative Angle: Target is to our Right (+) if FieldAngle < Heading
-            // Target = Heading - FieldAngle
             double targetAngleRobotRad = normalizeRadians(robotPose.getHeading() - targetAngleFieldRad);
             goalAngleDeg = Math.toDegrees(targetAngleRobotRad);
 
-            if (tx != null) goalAngleDeg += tx; // tx positive is Right
+            if (tx != null) goalAngleDeg += tx; 
 
             lastCalculatedTarget = goalAngleDeg;
             
+            // ---------------- HOOD & SHOOTER LOGIC ----------------
             double distance = Math.hypot(dx, dy); 
             double normalized = Range.clip((distance - MIN_DISTANCE_INCHES) / (MAX_DISTANCE_INCHES - MIN_DISTANCE_INCHES), 0, 1);
-            hood.setPosition(Range.clip(HOOD_MIN + Math.pow(normalized, 3.0) * (HOOD_MAX - HOOD_MIN), HOOD_MIN, HOOD_MAX));
+            
+            // Calculate target hood angle in DEGREES
+            // Using cubic curve: stays flatter for close shots, rises faster for far shots
+            double targetHoodDeg = HOOD_MIN_DEG + Math.pow(normalized, 3.0) * (HOOD_MAX_DEG - HOOD_MIN_DEG);
+            
+            // Convert physical degrees to 0.0-1.0 servo position using the 12.5 deg offset
+            double servoPos = (targetHoodDeg - HOOD_START_ANGLE_DEG) / SERVO_RANGE_DEGREES;
+            hood.setPosition(Range.clip(servoPos, 0, 1));
+
             shootRPM = Range.clip(MIN_RPM + normalized * 1000, MIN_RPM, MAX_RPM);
         }
 
