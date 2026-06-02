@@ -17,8 +17,8 @@ public class TurretSubsystem {
     private Follower follower;
 
     // ---------------- TURRET PD CONTROL ----------------
-    public static double TICKS_PER_DEGREE = 1.6122; 
-    public static double kP = 0.02; 
+    public static double TICKS_PER_DEGREE = 4.3667;
+    public static double kP = 0.02;
     public static double kI = 0.0;
     public static double kD = 0.0005;
     
@@ -27,35 +27,43 @@ public class TurretSubsystem {
     private double manualTargetAngle = 0;
     private double lastCalculatedTarget = 0; 
     private double lastTargetFieldAngle = 0; 
+    private double lastCalculatedDistance = 0;
+    private double lastRequestedPower = 0;
     private boolean useManualTarget = false;
-    
-    private final double ANGLE_TOLERANCE = 4.0; 
-    private final double MAX_POWER = 0.25; 
 
-    public static double MIN_ANGLE = -280.0;
-    public static double MAX_ANGLE = 720.0;
+    private final double ANGLE_TOLERANCE = 4.0;
+    private final double MAX_POWER = 0.25;
+
+    // --- MECHANICAL LIMITS ---
+    public static double MIN_ANGLE = -120.0;
+    public static double MAX_ANGLE = 360.0;
 
     private final ElapsedTime loopTimer = new ElapsedTime();
 
     // ---------------- HOOD / SHOOTER ----------------
-    // Servo range: 0 to 1.0 = 0 to 300 degrees
-    private final double SERVO_RANGE_DEGREES = 300.0;
-    private final double HOOD_START_ANGLE_DEG = 12.5; // Physical angle at servo pos 0
-    
-    // Set your physical hood limits in DEGREES here (Relative to horizontal)
-    private final double HOOD_MIN_DEG = 12.5; // Starting physical angle
-    private final double HOOD_MAX_DEG = 22.0; // Max allowed angle from horizontal
-    
-    private final double MIN_DISTANCE_INCHES = 12.0;
-    private final double MAX_DISTANCE_INCHES = 80.0;
+    private final double HOOD_MIN = 0.36;
+    private final double HOOD_MAX = 0.75;
+    private final double MIN_DISTANCE_METERS = 0.3;
+    private final double MAX_DISTANCE_METERS = 2.0;
 
     private final double MIN_RPM = 2000;
-    private final double MAX_RPM = 4000;
+    private final double MAX_RPM = 3000;
     private double shootRPM = MIN_RPM;
+    private double calculatedHoodPos = 0.5;
+
+    private final double INCHES_TO_METERS = 0.0254;
+
+    public enum Alliance { BLUE, RED }
+    private Alliance alliance = Alliance.BLUE;
 
     // ---------------- GOAL POSITION (INCHES) ----------------
-    private double goalX = 6.0; 
-    private double goalY = 132.0; 
+    private double goalX = 0.0;
+    private double goalY = 144.0; 
+
+    private boolean manualHoodEnabled = false;
+    private boolean manualRPMEnabled = false;
+    private double manualHoodPos = 0.5;
+    private double manualRPM = 3000;
 
     public TurretSubsystem(HardwareMap hwMap) {
         this.hw = Hardware.getInstance(hwMap);
@@ -71,18 +79,16 @@ public class TurretSubsystem {
     public void setkD(double newkD) { kD = newkD; }
     public double getShootRPM() { return shootRPM; }
 
-    public void update() { updateInternal(null); }
-    public void update(Double tx) { updateInternal(tx); }
-
-    private void updateInternal(Double tx) {
+    public void update() {
         double deltaTime = loopTimer.seconds();
-        deltaTime = Math.max(deltaTime, 0.01);
+        if (deltaTime < 0.001) deltaTime = 0.001; 
         loopTimer.reset();
 
-        double goalAngleDeg;
+        double currentAngleDeg = getTurretAngleDegrees();
+        double targetAngle;
 
         if (useManualTarget) {
-            goalAngleDeg = manualTargetAngle;
+            targetAngle = manualTargetAngle;
         } else {
             if (follower == null) return;
             Pose robotPose = follower.getPose();
@@ -91,34 +97,39 @@ public class TurretSubsystem {
             double dx = goalX - robotPose.getX();
             double dy = goalY - robotPose.getY();
 
-            double targetAngleFieldRad = Math.atan2(dy, dx); 
+            // Field Angle Calculation: 0=Right (Pos X), 90=Straight (Pos Y)
+            double targetAngleFieldRad = Math.atan2(dy, dx);
             lastTargetFieldAngle = Math.toDegrees(targetAngleFieldRad);
             
-            double targetAngleRobotRad = normalizeRadians(robotPose.getHeading() - targetAngleFieldRad);
-            goalAngleDeg = Math.toDegrees(targetAngleRobotRad);
-
-            if (tx != null) goalAngleDeg += tx; 
-
-            lastCalculatedTarget = goalAngleDeg;
+            // Relative Angle: RobotHeading - FieldAngle
+            double baseRelativeDeg = Math.toDegrees(normalizeRadians(robotPose.getHeading() - targetAngleFieldRad));
             
+            // Intelligent Wrapping: Find version of target closest to current position within limits
+            targetAngle = getBestReachableVersion(baseRelativeDeg, currentAngleDeg);
+            lastCalculatedTarget = targetAngle;
+
             // ---------------- HOOD & SHOOTER LOGIC ----------------
-            double distance = Math.hypot(dx, dy); 
-            double normalized = Range.clip((distance - MIN_DISTANCE_INCHES) / (MAX_DISTANCE_INCHES - MIN_DISTANCE_INCHES), 0, 1);
-            
-            // Calculate target hood angle in DEGREES
-            // Using cubic curve: stays flatter for close shots, rises faster for far shots
-            double targetHoodDeg = HOOD_MIN_DEG + Math.pow(normalized, 3.0) * (HOOD_MAX_DEG - HOOD_MIN_DEG);
-            
-            // Convert physical degrees to 0.0-1.0 servo position using the 12.5 deg offset
-            double servoPos = (targetHoodDeg - HOOD_START_ANGLE_DEG) / SERVO_RANGE_DEGREES;
-            hood.setPosition(Range.clip(servoPos, 0, 1));
+            double distanceInches = Math.hypot(dx, dy);
+            lastCalculatedDistance = distanceInches;
 
-            shootRPM = Range.clip(MIN_RPM + normalized * 1000, MIN_RPM, MAX_RPM);
+            double distanceMeters = (distanceInches * INCHES_TO_METERS) * 0.85;
+            double normalized = Range.clip((distanceMeters - MIN_DISTANCE_METERS) / (MAX_DISTANCE_METERS - MIN_DISTANCE_METERS), 0, 1);
+
+            if (!manualHoodEnabled) {
+                hood.setPosition(Range.clip(HOOD_MIN + normalized * (HOOD_MAX - HOOD_MIN), HOOD_MIN, HOOD_MAX));
+            } else {
+                hood.setPosition(manualHoodPos);
+            }
+
+            if (manualRPMEnabled) {
+                shootRPM = manualRPM;
+            } else {
+                shootRPM = MIN_RPM + (normalized * (MAX_RPM - MIN_RPM));
+            }
         }
 
-        goalAngleDeg = Range.clip(goalAngleDeg, MIN_ANGLE, MAX_ANGLE);
-        double currentAngleDeg = getTurretAngleDegrees();
-        double error = wrapDegrees(goalAngleDeg - currentAngleDeg);
+        // Final PID Control
+        double error = targetAngle - currentAngleDeg; 
         
         if (Math.abs(error) < 5) totalError += error * deltaTime;
         else totalError = 0;
@@ -126,8 +137,31 @@ public class TurretSubsystem {
         double dTerm = (error - lastError) / deltaTime * kD;
         double power = (Math.abs(error) < ANGLE_TOLERANCE) ? 0 : Range.clip(error * kP + totalError * kI + dTerm, -MAX_POWER, MAX_POWER);
 
+        lastRequestedPower = power;
         turret.setPower(power);
         lastError = error;
+    }
+
+    /**
+     * Logic to find the multiple of 360 that is within limits and closest to current position.
+     */
+    private double getBestReachableVersion(double target, double current) {
+        double[] candidates = {target - 720, target - 360, target, target + 360, target + 720};
+        double best = target;
+        double minDiff = Double.MAX_VALUE;
+        boolean foundValid = false;
+
+        for (double v : candidates) {
+            if (v >= MIN_ANGLE && v <= MAX_ANGLE) {
+                double diff = Math.abs(v - current);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    best = v;
+                    foundValid = true;
+                }
+            }
+        }
+        return foundValid ? best : Range.clip(target, MIN_ANGLE, MAX_ANGLE);
     }
 
     private double getTurretAngleDegrees() { return (double)turret.getCurrentPosition() / TICKS_PER_DEGREE; }
@@ -136,29 +170,50 @@ public class TurretSubsystem {
         while (angle < -Math.PI) angle += 2*Math.PI;
         return angle;
     }
-    private double wrapDegrees(double angle) {
-        while (angle > 180) angle -= 360;
-        while (angle < -180) angle += 360;
-        return angle;
-    }
     public void setGoalPosition(double xInches, double yInches) {
-        goalX = xInches;
-        goalY = yInches;
-        useManualTarget = false;
+        goalX = xInches; goalY = yInches; useManualTarget = false;
+    }
+    public void setAlliance(Alliance alliance) {
+        this.alliance = alliance;
+        if (alliance == Alliance.BLUE) {
+            setGoalPosition(72.0, 144.0);
+        } else {
+            setGoalPosition(72.0, 0.0);
+        }
+    }
+    public void setManualHood(double pos) {
+        this.manualHoodPos = pos;
+        this.manualHoodEnabled = true;
+        hw.hood.setPosition(pos);
+    }
+    public void disableManualHood() {
+        this.manualHoodEnabled = false;
+    }
+    public void setManualRPM(double rpm) {
+        this.manualRPM = rpm;
+        this.manualRPMEnabled = true;
+    }
+    public void disableManualRPM() {
+        this.manualRPMEnabled = false;
+    }
+    public void disableManualShooter() {
+        this.manualHoodEnabled = false;
+        this.manualRPMEnabled = false;
     }
     public void setTargetAngle(double angleDeg) {
-        manualTargetAngle = angleDeg;
-        useManualTarget = true;
+        manualTargetAngle = angleDeg; useManualTarget = true;
     }
     public void resetEncoder() {
         turret.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
         turret.setMode(DcMotorEx.RunMode.RUN_USING_ENCODER);
         manualTargetAngle = 0; lastError = 0; totalError = 0;
     }
-    public void setManualPower(double power) { turret.setPower(power); }
+    public void setManualPower(double power) { this.useManualTarget = true; this.lastRequestedPower = power; turret.setPower(power); }
     public double getCurrentAngle() { return getTurretAngleDegrees(); }
+    public int getTicks() { return turret.getCurrentPosition(); }
     public double getTargetAngle() { return useManualTarget ? manualTargetAngle : lastCalculatedTarget; }
     public double getTargetFieldAngle() { return lastTargetFieldAngle; }
-    public double getError() { return wrapDegrees(getTargetAngle() - getCurrentAngle()); }
-    public void lockToTag(double bearing) { update(bearing); }
+    public double getDistance() { return lastCalculatedDistance; }
+    public double getError() { return getTargetAngle() - getCurrentAngle(); }
+    public double getRequestedPower() { return lastRequestedPower; }
 }

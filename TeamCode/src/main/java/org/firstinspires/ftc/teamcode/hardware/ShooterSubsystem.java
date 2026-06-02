@@ -16,7 +16,7 @@ public class ShooterSubsystem {
     public static double kD = 0.0001;
     public static double kF = 0.00037;
 
-    public static final double TICKS_PER_REV = 28.0;
+    public static final double TICKS_PER_REV = 28.0; // bare goBILDA 6000 RPM motor
 
     private double targetRPM = 0.0;
     private double targetTPS = 0.0;

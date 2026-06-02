@@ -8,6 +8,7 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.NormalizedRGBA;
+import com.qualcomm.robotcore.util.Range;
 import com.seattlesolvers.solverslib.gamepad.GamepadEx;
 
 import org.firstinspires.ftc.robotcore.external.JavaUtil;
@@ -49,7 +50,6 @@ public class mainOp extends OpMode {
     public static Pose startingPose = new Pose(0, 0, Math.toRadians(90));
 
     private final double MANUAL_RPM = 1500.0;
-    private final double AUTO_SHOOT_RPM = 3200.0;
     
     private enum Alliance { BLUE, RED, NONE }
     private Alliance currentAlliance = Alliance.NONE;
@@ -61,6 +61,9 @@ public class mainOp extends OpMode {
     private boolean turretLockEnabled = true;
     private boolean autoShootActive = false;
     private int sortStep = 0;
+
+    private double manualHoodPos = 0.5;
+    private boolean manualHoodEnabled = false;
 
     private int cameraGain = 25; 
     private boolean previewEnabled = true;
@@ -91,7 +94,7 @@ public class mainOp extends OpMode {
 
         turret = new TurretSubsystem(hardwareMap);
         turret.setFollower(follower);
-        turret.setGoalPosition(6, 132); // Default to Blue goal
+        turret.setGoalPosition(10, 138); // Default to Blue goal
         vision = new VisionSubsystem(hardwareMap);
 
         imu = hardwareMap.get(IMU.class, "imu");
@@ -112,15 +115,13 @@ public class mainOp extends OpMode {
     @Override
     public void init_loop() {
         // Alliance Selection & Goal Setting (Inches)
-        // Red Basket = Top Right (Far wall, right side)
-        // Blue Basket = Top Left (Far wall, left side)
         if (gamepad1.x) {
             currentAlliance = Alliance.BLUE;
-            turret.setGoalPosition(6, 132); 
+            turret.setGoalPosition(0, 144);
         }
         if (gamepad1.b) {
             currentAlliance = Alliance.RED;
-            turret.setGoalPosition(138, 132);
+            turret.setGoalPosition(144, 144);
         }
 
         // Sequence Selection
@@ -156,9 +157,16 @@ public class mainOp extends OpMode {
         follower.update();
         telemetryM.update();
 
+        Pose currentPose = follower.getPose();
+        if (currentPose == null) {
+            telemetry.addLine("Odometry Not Init...");
+            telemetry.update();
+            return;
+        }
+
         // --- DRIVE CONTROL ---
-        double forward = -gamepad1.left_stick_y;
-        double strafe = -gamepad1.left_stick_x;
+        double forward = gamepad1.left_stick_x;
+        double strafe = gamepad1.left_stick_y;
         double turn = -gamepad1.right_stick_x;
 
         if (gamepad1.right_stick_button && !lastRSB) slowMode = !slowMode;
@@ -210,13 +218,16 @@ public class mainOp extends OpMode {
         if (gamepad1.x && !lastX) {
             autoShootActive = true;
             shooterRunning = true;
-            shooter.setTargetRPM(AUTO_SHOOT_RPM);
+            shooter.setTargetRPM(turret.getShootRPM());
             shooter.on();
         }
         lastX = gamepad1.x;
 
         if (autoShootActive && !sorter.isBusy()) {
-            if (Math.abs(shooter.getCurrentRPM() - AUTO_SHOOT_RPM) <= 100) {
+            double dynamicTarget = turret.getShootRPM();
+            shooter.setTargetRPM(dynamicTarget);
+
+            if (Math.abs(shooter.getCurrentRPM() - dynamicTarget) <= 150) {
                 if (autoSortingEnabled) {
                     if (sortStep < targets.length) {
                         if (sorter.sortToColor(targets[sortStep])) sorter.startTransfer();
@@ -272,20 +283,32 @@ public class mainOp extends OpMode {
         }
         if (gamepad1.dpad_left) imu.resetYaw();
 
-        // --- TELEMETRY ---
-        Pose currentPose = follower.getPose();
-        if (currentPose != null) {
-            telemetryM.debug("position", currentPose);
+        // --- HOOD CONTROL (Gamepad 2) ---
+        if (Math.abs(gamepad2.left_stick_y) > 0.05) {
+            manualHoodEnabled = true;
+            manualHoodPos = Range.clip(manualHoodPos - gamepad2.left_stick_y * 0.005, 0, 1);
+            turret.setManualHood(manualHoodPos);
         }
+        if (gamepad2.y) {
+            manualHoodEnabled = false;
+            turret.disableManualHood();
+        }
+
+        // --- TELEMETRY ---
+        telemetryM.debug("position", currentPose);
         
         telemetry.addLine("--- TURRET DEBUG ---");
         telemetry.addData("Lock Enabled", turretLockEnabled);
         telemetry.addData("Alliance", currentAlliance);
         telemetry.addData("Goal Field Angle", "%.2f°", turret.getTargetFieldAngle());
-        telemetry.addData("Robot Heading", "%.2f°", Math.toDegrees(follower.getPose().getHeading()));
+        telemetry.addData("Robot Heading", "%.2f°", Math.toDegrees(currentPose.getHeading()));
+        telemetry.addData("Distance to Goal", "%.2f in", turret.getDistance());
         telemetry.addData("Current Angle", "%.2f", turret.getCurrentAngle());
         telemetry.addData("Target Angle", "%.2f", turret.getTargetAngle());
         telemetry.addData("Error", "%.2f", turret.getError());
+        telemetry.addData("Motor Power", "%.2f", turret.getRequestedPower());
+        telemetry.addData("Target RPM", "%.0f", turret.getShootRPM());
+        telemetry.addData("Hood Mode", manualHoodEnabled ? "MANUAL: " + String.format(Locale.US, "%.3f", manualHoodPos) : "AUTO");
         
         telemetry.addLine("\n--- STATUS ---");
         telemetry.addData("Drive Mode", isRobotCentric ? "ROBOT CENTRIC" : "FIELD CENTRIC");

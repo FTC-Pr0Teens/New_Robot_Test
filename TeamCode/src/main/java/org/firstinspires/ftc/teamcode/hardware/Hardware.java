@@ -4,6 +4,7 @@ import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DistanceSensor;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.IMU;
@@ -41,6 +42,7 @@ public class Hardware {
         this.turret.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         this.turret.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         this.turret.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        this.shooter.setDirection(DcMotorSimple.Direction.REVERSE);
 
         this.sorter1 = hwMap.get(Servo.class, "sorter1");
         this.sorter2 = hwMap.get(Servo.class, "sorter2");

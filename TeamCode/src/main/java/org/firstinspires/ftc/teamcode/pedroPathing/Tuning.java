@@ -183,9 +183,12 @@ class LocalizationTest extends OpMode {
         follower.setTeleOpDrive(-gamepad1.left_stick_y, -gamepad1.left_stick_x, -gamepad1.right_stick_x, true);
         follower.update();
 
-        telemetryM.debug("x:" + follower.getPose().getX());
-        telemetryM.debug("y:" + follower.getPose().getY());
-        telemetryM.debug("heading:" + follower.getPose().getHeading());
+        Pose pose = follower.getPose();
+        if (pose != null) {
+            telemetryM.debug("x:" + pose.getX());
+            telemetryM.debug("y:" + pose.getY());
+            telemetryM.debug("heading:" + pose.getHeading());
+        }
         telemetryM.debug("total heading:" + follower.getTotalHeading());
         if (debugStringEnabled) {
             telemetryM.debug("Drivetrain Debug String:\n" +
@@ -376,7 +379,12 @@ class ForwardVelocityTuner extends OpMode {
         telemetryM.debug("Make sure you have enough room, since the robot has inertia after cutting power.");
         telemetryM.debug("After running the distance, the robot will cut power from the drivetrain and display the forward velocity.");
         telemetryM.debug("Press B on game pad 1 to stop.");
-        telemetryM.debug("pose", follower.getPose());
+        Pose pose = follower.getPose();
+        if (pose != null) {
+            telemetryM.debug("pose", pose);
+        } else {
+            telemetryM.debug("pose", "Odometry not initialized");
+        }
         telemetryM.update(telemetry);
 
         follower.update();
@@ -618,7 +626,9 @@ class ForwardZeroPowerAccelerationTuner extends OpMode {
         follower.update();
         drawCurrentAndHistory();
 
-        Vector heading = new Vector(1.0, follower.getPose().getHeading());
+        Pose pose = follower.getPose();
+        if (pose == null) return;
+        Vector heading = new Vector(1.0, pose.getHeading());
         if (!end) {
             if (!stopping) {
                 if (follower.getVelocity().dot(heading) > VELOCITY) {
@@ -722,7 +732,9 @@ class LateralZeroPowerAccelerationTuner extends OpMode {
         follower.update();
         drawCurrentAndHistory();
 
-        Vector heading = new Vector(1.0, follower.getPose().getHeading() - Math.PI / 2);
+        Pose pose = follower.getPose();
+        if (pose == null) return;
+        Vector heading = new Vector(1.0, pose.getHeading() - Math.PI / 2);
         if (!end) {
             if (!stopping) {
                 if (Math.abs(follower.getVelocity().dot(heading)) > VELOCITY) {
@@ -884,19 +896,22 @@ class PredictiveBrakingTuner extends OpMode {
             case WAIT_BRAKE_TIME: {
                 double t = timer.milliseconds();
                 Pose currentPose = follower.getPose();
+                if (currentPose == null) return;
                 double currentVelocity = follower.getVelocity().getMagnitude();
 
                 brakeData.add(new BrakeRecord(t, currentPose, currentVelocity));
 
                 if (follower.getVelocity().dot(new Vector(direction,
-                        follower.getHeading())) <= 0) {
+                        currentPose.getHeading())) <= 0) {
                     state = State.RECORD;
                 }
                 break;
             }
 
             case RECORD: {
-                Vector endPosition = follower.getPose().getAsVector();
+                Pose pose = follower.getPose();
+                if (pose == null) break;
+                Vector endPosition = pose.getAsVector();
                 double brakingDistance = endPosition.minus(startPosition).getMagnitude();
 
                 velocityToBrakingDistance.add(new double[]{measuredVelocity, brakingDistance});
