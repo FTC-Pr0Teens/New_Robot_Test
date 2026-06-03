@@ -94,7 +94,7 @@ public class mainOp extends OpMode {
 
         turret = new TurretSubsystem(hardwareMap);
         turret.setFollower(follower);
-        turret.setGoalPosition(10, 138); // Default to Blue goal
+        turret.setGoalPosition(10, 140); // Default to Blue goal
         vision = new VisionSubsystem(hardwareMap);
 
         imu = hardwareMap.get(IMU.class, "imu");
