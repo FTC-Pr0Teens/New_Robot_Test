@@ -70,7 +70,7 @@ public class mainOp extends OpMode {
     private boolean previewEnabled = true;
 
     // Edge Detection States
-    private boolean lastA = false, lastB = false, lastX = false, lastY = false, last2B = false, last2X = false;
+    private boolean lastA = false, lastB = false, lastX = false, lastY = false;
     private boolean lastLB = false, lastRB = false, lastStart = false, lastRSB = false;
     private boolean lastA2 = false, lastLB2 = false, lastRB2 = false;
     private boolean tuneRPMMode = false;
@@ -322,18 +322,6 @@ public class mainOp extends OpMode {
             manualHoodEnabled = false;
             turret.disableManualHood();
         }
-
-        // --- FLYWHEEL CONTROL (Gamepad 2) ---
-        if (gamepad2.b && !last2B) {
-            shooter.setTargetRPM(shooter.getCurrentRPM()+ 200);
-            shooter.on();
-        }
-        last2B = gamepad2.b;
-        if (gamepad2.x && !last2X) {
-            shooter.setTargetRPM(turret.getShootRPM()-200);
-            shooter.on();
-        }
-        last2X = gamepad2.x;
 
         // --- TELEMETRY ---
         telemetryM.debug("position", currentPose);

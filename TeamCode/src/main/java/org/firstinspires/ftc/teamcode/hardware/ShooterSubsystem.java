@@ -1,7 +1,6 @@
 package org.firstinspires.ftc.teamcode.hardware;
 
 import com.bylazar.configurables.annotations.Configurable;
-import com.pedropathing.math.MathFunctions;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.seattlesolvers.solverslib.controller.PIDController;
 
@@ -13,7 +12,7 @@ public class ShooterSubsystem {
 
     // Soft-start PID: kF provides base power, kI closes the gap, kP handles small corrections
     public static double kP = 0.0006;
-    public static double kI = 0.01; 
+    public static double kI = 0.01;
     public static double kD = 0.0001;
     public static double kF = 0.00037;
 
@@ -27,8 +26,6 @@ public class ShooterSubsystem {
     // Mode state for tuning
     private boolean openLoopMode = false;
     private double openLoopPower = 0.0;
-    public static double flywheelOffset = 0;
-    public static double hoodOffset = 0;
 
     public ShooterSubsystem(HardwareMap hardwareMap) {
         this.hw = Hardware.getInstance(hardwareMap);
@@ -43,13 +40,6 @@ public class ShooterSubsystem {
         this.openLoopMode = false;
     }
 
-    public double flywheelSpeed(double goalDistance) {
-        return MathFunctions.clamp(1, 0, 3000);
-
-    }
-    public double hoodAngle(double goalDistance) {
-        return MathFunctions.clamp(1, 0, 213123123);
-    }
     public void setOpenLoop(double power) {
         this.openLoopMode = true;
         this.openLoopPower = power;
@@ -89,11 +79,11 @@ public class ShooterSubsystem {
         } else {
             // Soft-start Ramping
             if (rampedTargetTPS < targetTPS) {
-                rampedTargetTPS += 18.0; 
+                rampedTargetTPS += 18.0;
                 if (rampedTargetTPS > targetTPS) rampedTargetTPS = targetTPS;
             }
 
-            double currentVelocity = Math.abs(hw.shooter.getVelocity()); 
+            double currentVelocity = Math.abs(hw.shooter.getVelocity());
             double power = shooterPID.calculate(currentVelocity, rampedTargetTPS);
             hw.shooter.setPower(power);
         }
@@ -111,3 +101,4 @@ public class ShooterSubsystem {
         return isRunning;
     }
 }
+
