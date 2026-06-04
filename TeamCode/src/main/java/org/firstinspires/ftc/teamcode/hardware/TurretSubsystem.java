@@ -166,9 +166,8 @@ public class TurretSubsystem {
 
     private double getTurretAngleDegrees() { return (double)turret.getCurrentPosition() / TICKS_PER_DEGREE; }
     private double normalizeRadians(double angle) {
-        while (angle > Math.PI) angle -= 2*Math.PI;
-        while (angle < -Math.PI) angle += 2*Math.PI;
-        return angle;
+        double result = angle - (2 * Math.PI) * Math.floor((angle + Math.PI) / (2 * Math.PI));
+        return Double.isNaN(result) || Double.isInfinite(result) ? 0 : result;
     }
     public void setGoalPosition(double xInches, double yInches) {
         goalX = xInches; goalY = yInches; useManualTarget = false;

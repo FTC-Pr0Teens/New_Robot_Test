@@ -47,9 +47,9 @@ public class mainOp extends OpMode {
     private double slowModeMultiplier = 0.5;
     private boolean isRobotCentric = false; // Field Centric by default
 
-    public static Pose startingPose = new Pose(0, 0, Math.toRadians(90));
+    public static Pose startingPose = new Pose(9, 9, Math.toRadians(90));
 
-    private final double MANUAL_RPM = 1500.0;
+    public static double PID_TARGET_RPM = 1500.0;
     
     private enum Alliance { BLUE, RED, NONE }
     private Alliance currentAlliance = Alliance.NONE;
@@ -66,11 +66,14 @@ public class mainOp extends OpMode {
     private boolean manualHoodEnabled = false;
 
     private int cameraGain = 25; 
+    private int lastCameraGain = -1;
     private boolean previewEnabled = true;
 
     // Edge Detection States
     private boolean lastA = false, lastB = false, lastX = false, lastY = false;
     private boolean lastLB = false, lastRB = false, lastStart = false, lastRSB = false;
+    private boolean lastA2 = false, lastLB2 = false, lastRB2 = false;
+    private boolean tuneRPMMode = false;
 
     private int sequenceIndex = 1; // Default: PGP
     private Sorter.BallColor[][] possibleSequences = {
@@ -117,7 +120,7 @@ public class mainOp extends OpMode {
         // Alliance Selection & Goal Setting (Inches)
         if (gamepad1.x) {
             currentAlliance = Alliance.BLUE;
-            turret.setGoalPosition(0, 144);
+            turret.setGoalPosition(10, 140);
         }
         if (gamepad1.b) {
             currentAlliance = Alliance.RED;
@@ -133,7 +136,11 @@ public class mainOp extends OpMode {
         // Camera Gain Tuning
         if (gamepad1.left_trigger > 0.5) cameraGain = Math.max(0, cameraGain - 1);
         if (gamepad1.right_trigger > 0.5) cameraGain = Math.min(255, cameraGain + 1);
-        vision.setManualExposure(6, cameraGain);
+        
+        if (cameraGain != lastCameraGain) {
+            vision.setManualExposure(6, cameraGain);
+            lastCameraGain = cameraGain;
+        }
 
         // Turret Zeroing (A Button during Init)
         if (gamepad1.a) {
@@ -165,7 +172,7 @@ public class mainOp extends OpMode {
         }
 
         // --- DRIVE CONTROL ---
-        double forward = gamepad1.left_stick_x;
+        double forward = -gamepad1.left_stick_x;
         double strafe = gamepad1.left_stick_y;
         double turn = -gamepad1.right_stick_x;
 
@@ -210,16 +217,26 @@ public class mainOp extends OpMode {
         if (gamepad1.b && !lastB) {
             autoShootActive = false;
             shooterRunning = !shooterRunning;
-            if (shooterRunning) shooter.setTargetRPM(MANUAL_RPM);
-            else shooter.off();
+            if (shooterRunning) {
+                shooter.setTargetRPM(PID_TARGET_RPM);
+                shooter.on();
+            } else {
+                shooter.off();
+            }
         }
         lastB = gamepad1.b;
 
         if (gamepad1.x && !lastX) {
-            autoShootActive = true;
-            shooterRunning = true;
-            shooter.setTargetRPM(turret.getShootRPM());
-            shooter.on();
+            if (autoShootActive) {
+                autoShootActive = false;
+                shooterRunning = false;
+                shooter.off();
+            } else {
+                autoShootActive = true;
+                shooterRunning = true;
+                shooter.setTargetRPM(turret.getShootRPM());
+                shooter.on();
+            }
         }
         lastX = gamepad1.x;
 
@@ -244,7 +261,7 @@ public class mainOp extends OpMode {
         }
 
         shooter.update();
-        sorter.update(shooter); 
+        sorter.update(null);
 
         // --- TURRET ---
         if (gamepad1.left_bumper && !lastLB) {
@@ -283,12 +300,24 @@ public class mainOp extends OpMode {
         }
         if (gamepad1.dpad_left) imu.resetYaw();
 
-        // --- HOOD CONTROL (Gamepad 2) ---
-        if (Math.abs(gamepad2.left_stick_y) > 0.05) {
-            manualHoodEnabled = true;
-            manualHoodPos = Range.clip(manualHoodPos - gamepad2.left_stick_y * 0.005, 0, 1);
-            turret.setManualHood(manualHoodPos);
+        // --- GAMEPAD 2 TUNING ---
+        if (gamepad2.a && !lastA2) tuneRPMMode = !tuneRPMMode;
+        lastA2 = gamepad2.a;
+
+        if (tuneRPMMode) {
+            if (gamepad2.right_bumper && !lastRB2) PID_TARGET_RPM += 50;
+            if (gamepad2.left_bumper && !lastLB2) PID_TARGET_RPM -= 50;
+        } else {
+            // --- HOOD CONTROL (Gamepad 2) ---
+            if (Math.abs(gamepad2.left_stick_y) > 0.05) {
+                manualHoodEnabled = true;
+                manualHoodPos = Range.clip(manualHoodPos - gamepad2.left_stick_y * 0.005, 0, 1);
+                turret.setManualHood(manualHoodPos);
+            }
         }
+        lastLB2 = gamepad2.left_bumper;
+        lastRB2 = gamepad2.right_bumper;
+
         if (gamepad2.y) {
             manualHoodEnabled = false;
             turret.disableManualHood();
@@ -308,6 +337,8 @@ public class mainOp extends OpMode {
         telemetry.addData("Error", "%.2f", turret.getError());
         telemetry.addData("Motor Power", "%.2f", turret.getRequestedPower());
         telemetry.addData("Target RPM", "%.0f", turret.getShootRPM());
+        telemetry.addData("PID Target RPM", "%.0f", PID_TARGET_RPM);
+        telemetry.addData("G2 Tuning Mode", tuneRPMMode ? "RPM (Bumpers)" : "HOOD (Stick Y)");
         telemetry.addData("Hood Mode", manualHoodEnabled ? "MANUAL: " + String.format(Locale.US, "%.3f", manualHoodPos) : "AUTO");
         
         telemetry.addLine("\n--- STATUS ---");
