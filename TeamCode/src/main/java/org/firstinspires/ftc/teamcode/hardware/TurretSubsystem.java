@@ -18,6 +18,7 @@ public class TurretSubsystem {
 
     // ---------------- TURRET PD CONTROL ----------------
     public static double TICKS_PER_DEGREE = 4.3667;
+    public static double TURRET_OFFSET_DEG = 0.0;
     public static double kP = 0.02;
     public static double kI = 0.0;
     public static double kD = 0.0005;
@@ -31,12 +32,13 @@ public class TurretSubsystem {
     private double lastRequestedPower = 0;
     private boolean useManualTarget = false;
 
-    private final double ANGLE_TOLERANCE = 4.0;
+    private final double ANGLE_TOLERANCE = 0.5;
     private final double MAX_POWER = 0.25;
 
     // --- MECHANICAL LIMITS ---
-    public static double MIN_ANGLE = -120.0;
-    public static double MAX_ANGLE = 360.0;
+    // Scaled for 4.3667 ticks/deg (Actual 5.97) to prevent physical crashes
+    public static double MIN_ANGLE = -85.0;
+    public static double MAX_ANGLE = 260.0;
 
     private final ElapsedTime loopTimer = new ElapsedTime();
 
@@ -84,6 +86,21 @@ public class TurretSubsystem {
         if (deltaTime < 0.001) deltaTime = 0.001; 
         loopTimer.reset();
 
+        if (follower != null && follower.getPose() != null) {
+            Pose robotPose = follower.getPose();
+            double dx = goalX - robotPose.getX();
+            double dy = goalY - robotPose.getY();
+            double distanceInches = Math.hypot(dx, dy);
+            lastCalculatedDistance = distanceInches;
+            shootRPM = calculateTargetRPM(distanceInches);
+
+            if (!manualHoodEnabled) {
+                hood.setPosition(calculateTargetHood(distanceInches));
+            } else {
+                hood.setPosition(manualHoodPos);
+            }
+        }
+
         double currentAngleDeg = getTurretAngleDegrees();
         double targetAngle;
 
@@ -102,30 +119,11 @@ public class TurretSubsystem {
             lastTargetFieldAngle = Math.toDegrees(targetAngleFieldRad);
             
             // Relative Angle: RobotHeading - FieldAngle
-            double baseRelativeDeg = Math.toDegrees(normalizeRadians(robotPose.getHeading() - targetAngleFieldRad));
+            double baseRelativeDeg = Math.toDegrees(normalizeRadians(robotPose.getHeading() - targetAngleFieldRad)) + TURRET_OFFSET_DEG;
             
             // Intelligent Wrapping: Find version of target closest to current position within limits
             targetAngle = getBestReachableVersion(baseRelativeDeg, currentAngleDeg);
             lastCalculatedTarget = targetAngle;
-
-            // ---------------- HOOD & SHOOTER LOGIC ----------------
-            double distanceInches = Math.hypot(dx, dy);
-            lastCalculatedDistance = distanceInches;
-
-            double distanceMeters = (distanceInches * INCHES_TO_METERS) * 0.85;
-            double normalized = Range.clip((distanceMeters - MIN_DISTANCE_METERS) / (MAX_DISTANCE_METERS - MIN_DISTANCE_METERS), 0, 1);
-
-            if (!manualHoodEnabled) {
-                hood.setPosition(Range.clip(HOOD_MIN + normalized * (HOOD_MAX - HOOD_MIN), HOOD_MIN, HOOD_MAX));
-            } else {
-                hood.setPosition(manualHoodPos);
-            }
-
-            if (manualRPMEnabled) {
-                shootRPM = manualRPM;
-            } else {
-                shootRPM = MIN_RPM + (normalized * (MAX_RPM - MIN_RPM));
-            }
         }
 
         // Final PID Control
@@ -215,4 +213,20 @@ public class TurretSubsystem {
     public double getDistance() { return lastCalculatedDistance; }
     public double getError() { return getTargetAngle() - getCurrentAngle(); }
     public double getRequestedPower() { return lastRequestedPower; }
+
+    public double calculateTargetRPM(double distance) {
+        // y = 0.0771986x^2 - 2.15354x + 2124.15023
+        double rpm = 0.0771986 * Math.pow(distance, 2) - 2.15354 * distance + 2124.15023;
+        return Range.clip(rpm, 0, 4000);
+    }
+
+    public double calculateTargetHood(double distance) {
+        // y = (4.19646 * 10^-8)x^4 - 0.0000118587x^3 + 0.00108356x^2 - 0.03823x + 1.08398
+        double hoodPos = (4.19646 * Math.pow(10, -8)) * Math.pow(distance, 4)
+                - 0.0000118587 * Math.pow(distance, 3)
+                + 0.00108356 * Math.pow(distance, 2)
+                - 0.03823 * distance
+                + 1.08398;
+        return Range.clip(hoodPos, 0.35, 1.0);
+    }
 }

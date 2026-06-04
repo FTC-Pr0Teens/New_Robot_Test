@@ -50,6 +50,7 @@ public class mainOp extends OpMode {
     public static Pose startingPose = new Pose(9, 9, Math.toRadians(90));
 
     public static double PID_TARGET_RPM = 1500.0;
+    public static double rpmOffset = 0.0;
     
     private enum Alliance { BLUE, RED, NONE }
     private Alliance currentAlliance = Alliance.NONE;
@@ -70,7 +71,7 @@ public class mainOp extends OpMode {
     private boolean previewEnabled = true;
 
     // Edge Detection States
-    private boolean lastA = false, lastB = false, lastX = false, lastY = false;
+    private boolean lastA = false, lastX = false, lastY = false;
     private boolean lastLB = false, lastRB = false, lastStart = false, lastRSB = false;
     private boolean lastA2 = false, lastLB2 = false, lastRB2 = false;
     private boolean tuneRPMMode = false;
@@ -97,7 +98,7 @@ public class mainOp extends OpMode {
 
         turret = new TurretSubsystem(hardwareMap);
         turret.setFollower(follower);
-        turret.setGoalPosition(10, 140); // Default to Blue goal
+        turret.setGoalPosition(6.5, 136.5); // Default to Blue goal
         vision = new VisionSubsystem(hardwareMap);
 
         imu = hardwareMap.get(IMU.class, "imu");
@@ -112,6 +113,7 @@ public class mainOp extends OpMode {
         hw.ncs.setGain(2.0f);
         targets = possibleSequences[sequenceIndex];
 
+        TurretSubsystem.TURRET_OFFSET_DEG = 0.0; // Reset vision offset on start
         telemetryM = PanelsTelemetry.INSTANCE.getTelemetry();
     }
 
@@ -120,11 +122,11 @@ public class mainOp extends OpMode {
         // Alliance Selection & Goal Setting (Inches)
         if (gamepad1.x) {
             currentAlliance = Alliance.BLUE;
-            turret.setGoalPosition(10, 140);
+            turret.setGoalPosition(6.5, 136.5);
         }
         if (gamepad1.b) {
             currentAlliance = Alliance.RED;
-            turret.setGoalPosition(144, 144);
+            turret.setGoalPosition(137.5, 136.5);
         }
 
         // Sequence Selection
@@ -161,6 +163,7 @@ public class mainOp extends OpMode {
 
     @Override
     public void loop() {
+        if (follower == null) return;
         follower.update();
         telemetryM.update();
 
@@ -172,23 +175,23 @@ public class mainOp extends OpMode {
         }
 
         // --- DRIVE CONTROL ---
-        double forward = -gamepad1.left_stick_x;
-        double strafe = gamepad1.left_stick_y;
-        double turn = -gamepad1.right_stick_x;
+        double forwardVal = -gamepad1.left_stick_x;
+        double strafeVal = gamepad1.left_stick_y;
+        double turnVal = -gamepad1.right_stick_x;
 
         if (gamepad1.right_stick_button && !lastRSB) slowMode = !slowMode;
         lastRSB = gamepad1.right_stick_button;
 
         if (slowMode) {
-            forward *= slowModeMultiplier;
-            strafe *= slowModeMultiplier;
-            turn *= slowModeMultiplier;
+            forwardVal *= slowModeMultiplier;
+            strafeVal *= slowModeMultiplier;
+            turnVal *= slowModeMultiplier;
         }
 
         if (gamepad1.dpad_up) isRobotCentric = true;
         if (gamepad1.dpad_down) isRobotCentric = false;
 
-        follower.setTeleOpDrive(forward, strafe, turn, isRobotCentric);
+        follower.setTeleOpDrive(forwardVal, strafeVal, turnVal, isRobotCentric);
 
         // --- CAMERA PREVIEW ---
         if (gamepad1.start && !lastStart) {
@@ -214,37 +217,24 @@ public class mainOp extends OpMode {
         }
 
         // --- SHOOT ---
-        if (gamepad1.b && !lastB) {
-            autoShootActive = false;
-            shooterRunning = !shooterRunning;
-            if (shooterRunning) {
-                shooter.setTargetRPM(PID_TARGET_RPM);
-                shooter.on();
-            } else {
-                shooter.off();
-            }
-        }
-        lastB = gamepad1.b;
-
         if (gamepad1.x && !lastX) {
-            if (autoShootActive) {
-                autoShootActive = false;
-                shooterRunning = false;
-                shooter.off();
-            } else {
-                autoShootActive = true;
-                shooterRunning = true;
-                shooter.setTargetRPM(turret.getShootRPM());
+            shooterRunning = !shooterRunning;
+            autoShootActive = shooterRunning;
+            if (shooterRunning) {
                 shooter.on();
+            } else {
+                shooter.off();
             }
         }
         lastX = gamepad1.x;
 
-        if (autoShootActive && !sorter.isBusy()) {
-            double dynamicTarget = turret.getShootRPM();
-            shooter.setTargetRPM(dynamicTarget);
+        // Unified Target: Regression + Manual Nudge
+        PID_TARGET_RPM = turret.getShootRPM() + rpmOffset;
 
-            if (Math.abs(shooter.getCurrentRPM() - dynamicTarget) <= 150) {
+        if (shooterRunning && !sorter.isBusy()) {
+            shooter.setTargetRPM(PID_TARGET_RPM);
+
+            if (autoShootActive && Math.abs(shooter.getCurrentRPM() - PID_TARGET_RPM) <= 150) {
                 if (autoSortingEnabled) {
                     if (sortStep < targets.length) {
                         if (sorter.sortToColor(targets[sortStep])) sorter.startTransfer();
@@ -274,6 +264,29 @@ public class mainOp extends OpMode {
         lastLB = gamepad1.left_bumper;
 
         List<AprilTagDetection> detections = vision.getAllDetections();
+        AprilTagDetection tag20 = null;
+        if (detections != null && !detections.isEmpty()) {
+            for (AprilTagDetection d : detections) {
+                if (d.id == 20 && d.ftcPose != null) {
+                    tag20 = d;
+                    break;
+                }
+            }
+        }
+
+        // Align with camera only if tag is detected, otherwise use pure odometry
+        if (tag20 != null && tag20.ftcPose != null) {
+            // Parallax Correction: Camera is 16mm offset from center
+            double parallaxFold = Math.toDegrees(Math.atan2(16.0 / 25.4, tag20.ftcPose.range));
+            double visionError = tag20.ftcPose.bearing - parallaxFold;
+            
+            // Set offset to 1/2 of the error to smooth and prevent overshooting
+            TurretSubsystem.TURRET_OFFSET_DEG = visionError * 0.5;
+        } else {
+            // Revert immediately to pure Odo if tag is lost
+            TurretSubsystem.TURRET_OFFSET_DEG = 0;
+        }
+
         if (turretLockEnabled) {
             turret.update();
         } else {
@@ -305,8 +318,8 @@ public class mainOp extends OpMode {
         lastA2 = gamepad2.a;
 
         if (tuneRPMMode) {
-            if (gamepad2.right_bumper && !lastRB2) PID_TARGET_RPM += 50;
-            if (gamepad2.left_bumper && !lastLB2) PID_TARGET_RPM -= 50;
+            if (gamepad2.right_bumper && !lastRB2) rpmOffset += 50;
+            if (gamepad2.left_bumper && !lastLB2) rpmOffset -= 50;
         } else {
             // --- HOOD CONTROL (Gamepad 2) ---
             if (Math.abs(gamepad2.left_stick_y) > 0.05) {
@@ -334,9 +347,10 @@ public class mainOp extends OpMode {
         telemetry.addData("Distance to Goal", "%.2f in", turret.getDistance());
         telemetry.addData("Current Angle", "%.2f", turret.getCurrentAngle());
         telemetry.addData("Target Angle", "%.2f", turret.getTargetAngle());
+        telemetry.addData("Turret Offset", "%.2f°", TurretSubsystem.TURRET_OFFSET_DEG);
+        telemetry.addData("Tag 20 Visible", tag20 != null);
         telemetry.addData("Error", "%.2f", turret.getError());
         telemetry.addData("Motor Power", "%.2f", turret.getRequestedPower());
-        telemetry.addData("Target RPM", "%.0f", turret.getShootRPM());
         telemetry.addData("PID Target RPM", "%.0f", PID_TARGET_RPM);
         telemetry.addData("G2 Tuning Mode", tuneRPMMode ? "RPM (Bumpers)" : "HOOD (Stick Y)");
         telemetry.addData("Hood Mode", manualHoodEnabled ? "MANUAL: " + String.format(Locale.US, "%.3f", manualHoodPos) : "AUTO");
