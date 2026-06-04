@@ -1,6 +1,7 @@
 package org.firstinspires.ftc.teamcode.hardware;
 
 import com.bylazar.configurables.annotations.Configurable;
+import com.pedropathing.math.MathFunctions;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.seattlesolvers.solverslib.controller.PIDController;
 
@@ -26,6 +27,8 @@ public class ShooterSubsystem {
     // Mode state for tuning
     private boolean openLoopMode = false;
     private double openLoopPower = 0.0;
+    public static double flywheelOffset = 0;
+    public static double hoodOffset = 0;
 
     public ShooterSubsystem(HardwareMap hardwareMap) {
         this.hw = Hardware.getInstance(hardwareMap);
@@ -40,6 +43,13 @@ public class ShooterSubsystem {
         this.openLoopMode = false;
     }
 
+    public double flywheelSpeed(double goalDistance) {
+        return MathFunctions.clamp(1, 0, 3000);
+
+    }
+    public double hoodAngle(double goalDistance) {
+        return MathFunctions.clamp(1, 0, 213123123);
+    }
     public void setOpenLoop(double power) {
         this.openLoopMode = true;
         this.openLoopPower = power;
