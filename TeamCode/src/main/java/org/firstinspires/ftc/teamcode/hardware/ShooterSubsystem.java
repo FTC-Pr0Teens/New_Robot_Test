@@ -85,7 +85,8 @@ public class ShooterSubsystem {
 
             double currentVelocity = Math.abs(hw.shooter.getVelocity());
             double power = shooterPID.calculate(currentVelocity, rampedTargetTPS);
-            hw.shooter.setPower(power);
+            // Ensure the flywheel only spins forward. Never allow negative power.
+            hw.shooter.setPower(Math.max(0, power));
         }
     }
 

@@ -19,8 +19,8 @@ public class TurretSubsystem {
     // ---------------- TURRET PD CONTROL ----------------
     public static double TICKS_PER_DEGREE = 4.3667;
     public static double TURRET_OFFSET_DEG = 0.0;
-    public static double kP = 0.02;
-    public static double kI = 0.0;
+    public static double kP = 0.035; // Bumped from 0.02
+    public static double kI = 0.001; // Added small I to fix steady-state offset
     public static double kD = 0.0005;
     
     private double lastError = 0;
@@ -129,11 +129,16 @@ public class TurretSubsystem {
         // Final PID Control
         double error = targetAngle - currentAngleDeg; 
         
-        if (Math.abs(error) < 5) totalError += error * deltaTime;
+        if (Math.abs(error) < 10) totalError += error * deltaTime; // Larger window for kI
         else totalError = 0;
         
         double dTerm = (error - lastError) / deltaTime * kD;
-        double power = (Math.abs(error) < ANGLE_TOLERANCE) ? 0 : Range.clip(error * kP + totalError * kI + dTerm, -MAX_POWER, MAX_POWER);
+        double iTerm = totalError * kI;
+        
+        // Add a small constant "kStatic" to overcome friction if error exists
+        double kStatic = Math.signum(error) * 0.03;
+        
+        double power = (Math.abs(error) < ANGLE_TOLERANCE) ? 0 : Range.clip(error * kP + iTerm + dTerm + kStatic, -MAX_POWER, MAX_POWER);
 
         lastRequestedPower = power;
         turret.setPower(power);
@@ -221,10 +226,10 @@ public class TurretSubsystem {
     }
 
     public double calculateTargetHood(double distance) {
-        // y = (4.19646 * 10^-8)x^4 - 0.0000118587x^3 + 0.00108356x^2 - 0.03823x + 1.08398
+        // y = (4.19646 * 10^-8)x^4 - 0.0000118587x^3 + 0.0010835612x^2 - 0.03823x + 1.08398
         double hoodPos = (4.19646 * Math.pow(10, -8)) * Math.pow(distance, 4)
                 - 0.0000118587 * Math.pow(distance, 3)
-                + 0.00108356 * Math.pow(distance, 2)
+                + 0.0010835612 * Math.pow(distance, 2)
                 - 0.03823 * distance
                 + 1.08398;
         return Range.clip(hoodPos, 0.35, 1.0);
