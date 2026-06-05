@@ -42,7 +42,7 @@ public class Hardware {
         this.turret.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         this.turret.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         this.turret.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        this.shooter.setDirection(DcMotorSimple.Direction.REVERSE);
+        this.shooter.setDirection(DcMotorSimple.Direction.FORWARD);
 
         this.sorter1 = hwMap.get(Servo.class, "sorter1");
         this.sorter2 = hwMap.get(Servo.class, "sorter2");
