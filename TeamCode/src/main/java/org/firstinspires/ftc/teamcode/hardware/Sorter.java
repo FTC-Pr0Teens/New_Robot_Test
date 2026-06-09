@@ -32,6 +32,19 @@ public class Sorter {
         this.telemetry = telemetry;
     }
 
+    public void startIntakeShoot(){
+        stateTimer.reset();
+        hw.flipper.setPosition(0);
+        hw.intake.setPower(1);
+
+        if (stateTimer.milliseconds() > 2000) {
+            hw.flipper.setPosition(0.15); // DOWN
+            hw.intake.setPower(0);
+        }
+
+
+
+    }
     /**
      * Finds the first empty physical slot and waits there.
      * Robust recording: records color, then waits for a cooldown before moving again.

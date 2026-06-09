@@ -178,7 +178,7 @@ public class TurretSubsystem {
     public void setAlliance(Alliance alliance) {
         this.alliance = alliance;
         if (alliance == Alliance.BLUE) {
-            setGoalPosition(72.0, 144.0);
+            setGoalPosition(45, 142.0);
         } else {
             setGoalPosition(72.0, 0.0);
         }

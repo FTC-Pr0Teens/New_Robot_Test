@@ -145,10 +145,9 @@ public class mainOp extends OpMode {
         }
 
         // Turret Zeroing (A Button during Init)
-        if (gamepad1.a && !lastA) {
+        if (gamepad1.a) {
             turret.resetEncoder();
         }
-        lastA = gamepad1.a;
 
         telemetry.addData("Alliance", currentAlliance == Alliance.NONE ? "X (Blue) / B (Red)" : currentAlliance);
         telemetry.addData("Sequence", sequenceNames[sequenceIndex]);
@@ -176,54 +175,23 @@ public class mainOp extends OpMode {
         }
 
         // --- DRIVE CONTROL ---
-        double fP = gamepad1.left_stick_x;
-        double sP = -gamepad1.left_stick_y;
-        double tP = -gamepad1.right_stick_x;
+        double forwardVal = gamepad1.left_stick_x;
+        double strafeVal = -gamepad1.left_stick_y;
+        double turnVal = -gamepad1.right_stick_x;
 
         if (gamepad1.right_stick_button && !lastRSB) slowMode = !slowMode;
         lastRSB = gamepad1.right_stick_button;
 
         if (slowMode) {
-            fP *= slowModeMultiplier;
-            sP *= slowModeMultiplier;
-            tP *= slowModeMultiplier;
+            forwardVal *= slowModeMultiplier;
+            strafeVal *= slowModeMultiplier;
+            turnVal *= slowModeMultiplier;
         }
 
         if (gamepad1.dpad_up) isRobotCentric = true;
         if (gamepad1.dpad_down) isRobotCentric = false;
 
-        follower.setTeleOpDrive(fP, sP, tP, isRobotCentric);
-
-        // --- VISION & TURRET SYNC ---
-        List<AprilTagDetection> detections = vision.getAllDetections();
-        AprilTagDetection tag20 = null;
-        if (detections != null && !detections.isEmpty()) {
-            for (AprilTagDetection d : detections) {
-                if (d.id == 20 && d.ftcPose != null) {
-                    tag20 = d;
-                    break;
-                }
-            }
-        }
-
-        // Align with camera only if tag is detected, otherwise use pure odometry
-        if (tag20 != null && tag20.ftcPose != null) {
-            // Parallax Correction: Camera is 16mm offset from center
-            double parallaxFold = Math.toDegrees(Math.atan2(16.0 / 25.4, tag20.ftcPose.range));
-            // Set offset to 0.75 of the error to smooth and prevent overshooting
-            TurretSubsystem.TURRET_OFFSET_DEG = (tag20.ftcPose.bearing - parallaxFold) * 0.75;
-        } else {
-            // Revert immediately to pure Odo if tag is lost to prevent "scanning"
-            TurretSubsystem.TURRET_OFFSET_DEG = 0;
-        }
-
-        if (turretLockEnabled) {
-            turret.update();
-        } else {
-            double p = gamepad1.right_trigger - gamepad1.left_trigger;
-            if (Math.abs(p) > 0.05) turret.setManualPower(p * 0.4);
-            else turret.setManualPower(0);
-        }
+        follower.setTeleOpDrive(forwardVal, strafeVal, turnVal, isRobotCentric);
 
         // --- CAMERA PREVIEW ---
         if (gamepad1.start && !lastStart) {
@@ -260,7 +228,7 @@ public class mainOp extends OpMode {
         }
         lastX = gamepad1.x;
 
-        // RPM: Polynomial Regression + Manual Offset (Always active)
+        // Unified Target: Regression + Manual Nudge
         PID_TARGET_RPM = turret.getShootRPM() + rpmOffset;
 
         if (shooterRunning && !sorter.isBusy()) {
@@ -276,7 +244,8 @@ public class mainOp extends OpMode {
                         sortStep = 0;
                     }
                 } else {
-                    sorter.startTransfer();
+//                    sorter.startTransfer();
+                    sorter.startIntakeShoot();
                     autoShootActive = false;
                 }
             }
@@ -285,7 +254,7 @@ public class mainOp extends OpMode {
         shooter.update();
         sorter.update(null);
 
-        // --- TURRET CONTROLS ---
+        // --- TURRET ---
         if (gamepad1.left_bumper && !lastLB) {
             turretLockEnabled = !turretLockEnabled;
             if (turretLockEnabled) {
@@ -294,6 +263,38 @@ public class mainOp extends OpMode {
             }
         }
         lastLB = gamepad1.left_bumper;
+
+        List<AprilTagDetection> detections = vision.getAllDetections();
+        AprilTagDetection tag20 = null;
+        if (detections != null && !detections.isEmpty()) {
+            for (AprilTagDetection d : detections) {
+                if (d.id == 20 && d.ftcPose != null) {
+                    tag20 = d;
+                    break;
+                }
+            }
+        }
+
+        // Align with camera only if tag is detected, otherwise use pure odometry
+        if (tag20 != null && tag20.ftcPose != null) {
+            // Parallax Correction: Camera is 16mm offset from center
+            double parallaxFold = Math.toDegrees(Math.atan2(16.0 / 25.4, tag20.ftcPose.range));
+            double visionError = tag20.ftcPose.bearing - parallaxFold;
+            
+            // Set offset to 1/2 of the error to smooth and prevent overshooting
+            TurretSubsystem.TURRET_OFFSET_DEG = visionError * 0.5;
+        } else {
+            // Revert immediately to pure Odo if tag is lost
+            TurretSubsystem.TURRET_OFFSET_DEG = 0;
+        }
+
+        if (turretLockEnabled) {
+            turret.update();
+        } else {
+            double p = gamepad1.right_trigger - gamepad1.left_trigger;
+            if (Math.abs(p) > 0.05) turret.setManualPower(p * 0.4);
+            else turret.setManualPower(0);
+        }
 
         // --- UTILS ---
         if (gamepad1.y && !lastY) autoSortingEnabled = !autoSortingEnabled;

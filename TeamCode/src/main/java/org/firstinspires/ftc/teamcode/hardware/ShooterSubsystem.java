@@ -12,7 +12,7 @@ public class ShooterSubsystem {
 
     // Soft-start PID: kF provides base power, kI closes the gap, kP handles small corrections
     public static double kP = 0.0006;
-    public static double kI = 0.05;
+    public static double kI = 0.055;
     public static double kD = 0.0001;
     public static double kF = 0.00037;
 
