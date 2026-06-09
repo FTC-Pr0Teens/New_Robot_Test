@@ -1,6 +1,7 @@
 package org.firstinspires.ftc.teamcode.hardware;
 
 import com.bylazar.configurables.annotations.Configurable;
+import com.pedropathing.math.MathFunctions;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.seattlesolvers.solverslib.controller.PIDController;
 
@@ -40,6 +41,15 @@ public class ShooterSubsystem {
         this.openLoopMode = false;
     }
 
+    public double calculateTargetRPM(double distance) {
+        //y=0.0771986x^{2}-2.15354x+2124.15023
+        return MathFunctions.clamp(0.0771986 * Math.pow(distance, 2) - 2.15354 * x + 2124.15023, 0, 4000);
+    }
+    public double calculateTargetHood(double distance) {
+        //y=\left(4.19646\times10^{-8}\right)x^{4}-0.0000118587x^{3}+0.00108356x^{2}-0.03823x+1.08398
+        return MathFunctions.clamp((4.19646 * Math.pow(10, 8)) * Math.pow(distance, 4) - 0.0000118587 * Math.pow(distance, 3) + 0.0010835 * Math.pow(distance, 2) - 0.03823 * x + 1.08398, 0.35, 1);
+
+    }
     public void setOpenLoop(double power) {
         this.openLoopMode = true;
         this.openLoopPower = power;
