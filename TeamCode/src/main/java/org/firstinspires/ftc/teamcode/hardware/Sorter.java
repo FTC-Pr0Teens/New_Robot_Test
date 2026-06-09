@@ -94,6 +94,7 @@ public class Sorter {
         else if (current == 1) searchOrder = new int[]{1, 0, 2};
         else                   searchOrder = new int[]{2, 1, 0};
 
+        // Attempt 1: Find an exact color match
         for (int i : searchOrder) {
             if (recordedColors[i] == target && !slotUsed[i]) {
                 moveToSlot(i);
@@ -101,6 +102,16 @@ public class Sorter {
                 return true;
             }
         }
+
+        // FALLBACK: If target color isn't available, find ANY occupied slot and shoot it to "speed shoot".
+        for (int i : searchOrder) {
+            if (recordedColors[i] != BallColor.NONE && !slotUsed[i]) {
+                moveToSlot(i);
+                slotUsed[i] = true;
+                return true;
+            }
+        }
+
         return false;
     }
 
