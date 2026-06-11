@@ -12,7 +12,7 @@ public class ShooterSubsystem {
     private final PIDController shooterPID;
 
     // Soft-start PID: kF provides base power, kI closes the gap, kP handles small corrections
-    public static double kP = 0.0006;
+    public static double kP = 0.00065;
     public static double kI = 0.055;
     public static double kD = 0.0001;
     public static double kF = 0.00037;
@@ -43,11 +43,11 @@ public class ShooterSubsystem {
 
     public double calculateTargetRPM(double distance) {
         //y=0.0771986x^{2}-2.15354x+2124.15023
-        return MathFunctions.clamp(0.0771986 * Math.pow(distance, 2) - 2.15354 * x + 2124.15023, 0, 4000);
+        return MathFunctions.clamp(0.0771986 * Math.pow(distance, 2) - 2.15354 * distance + 2124.15023, 0, 4000);
     }
     public double calculateTargetHood(double distance) {
         //y=\left(4.19646\times10^{-8}\right)x^{4}-0.0000118587x^{3}+0.00108356x^{2}-0.03823x+1.08398
-        return MathFunctions.clamp((4.19646 * Math.pow(10, 8)) * Math.pow(distance, 4) - 0.0000118587 * Math.pow(distance, 3) + 0.0010835 * Math.pow(distance, 2) - 0.03823 * x + 1.08398, 0.35, 1);
+        return MathFunctions.clamp((4.19646 * Math.pow(10, 8)) * Math.pow(distance, 4) - 0.0000118587 * Math.pow(distance, 3) + 0.0010835 * Math.pow(distance, 2) - 0.03823 * distance + 1.08398, 0.35, 1);
 
     }
     public void setOpenLoop(double power) {

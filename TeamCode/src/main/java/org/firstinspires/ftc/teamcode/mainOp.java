@@ -188,10 +188,10 @@ public class mainOp extends OpMode {
             turnVal *= slowModeMultiplier;
         }
 
-        if (gamepad1.dpad_up) isRobotCentric = true;
-        if (gamepad1.dpad_down) isRobotCentric = false;
+//        if (gamepad1.dpad_up) isRobotCentric = true;
+//        if (gamepad1.dpad_down) isRobotCentric = false;
 
-        follower.setTeleOpDrive(forwardVal, strafeVal, turnVal, isRobotCentric);
+        follower.setTeleOpDrive(forwardVal, strafeVal, turnVal, false);
 
         // --- CAMERA PREVIEW ---
         if (gamepad1.start && !lastStart) {
