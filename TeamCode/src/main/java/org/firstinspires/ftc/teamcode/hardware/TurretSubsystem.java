@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode.hardware;
 
+import com.bylazar.configurables.annotations.Configurable;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
@@ -7,6 +8,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.Pose;
+@Configurable
 
 public class TurretSubsystem {
 
@@ -180,7 +182,7 @@ public class TurretSubsystem {
         if (alliance == Alliance.BLUE) {
             setGoalPosition(45, 142.0);
         } else {
-            setGoalPosition(72.0, 0.0);
+            setGoalPosition(45, 142.0);
         }
     }
     public void setManualHood(double pos) {

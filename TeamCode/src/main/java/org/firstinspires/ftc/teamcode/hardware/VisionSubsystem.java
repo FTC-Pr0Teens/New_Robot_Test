@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode.hardware;
 
+import android.util.Size;
+
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
@@ -22,11 +24,15 @@ public class VisionSubsystem {
                 .setDrawAxes(true)
                 .setDrawCubeProjection(true)
                 .setDrawTagOutline(true)
+                .setDrawTagID(true)
+                .setDrawTagOutline(true)
+
                 .build();
 
         // Create the vision portal
         visionPortal = new VisionPortal.Builder()
                 .setCamera(hardwareMap.get(WebcamName.class, "Webcam 1"))
+                .setCameraResolution(new Size(640, 480))
                 .addProcessor(aprilTag)
                 .enableLiveView(true) 
                 .setAutoStopLiveView(false)

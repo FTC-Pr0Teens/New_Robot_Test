@@ -1,6 +1,8 @@
 package org.firstinspires.ftc.teamcode;
 
 import com.bylazar.configurables.annotations.Configurable;
+import com.bylazar.panels.Panels;
+import com.bylazar.telemetry.JoinedTelemetry;
 import com.bylazar.telemetry.PanelsTelemetry;
 import com.bylazar.telemetry.TelemetryManager;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
@@ -368,7 +370,42 @@ public class mainOp extends OpMode {
                 telemetry.addLine(String.format(Locale.US, "ID %d: Bearing %.1f", d.id, d.ftcPose != null ? d.ftcPose.bearing : 0));
             }
         }
-        telemetry.update();
+
+
+        //panels telemetry
+
+        telemetryM.debug("position", currentPose);
+
+
+        telemetryM.debug("--- TURRET DEBUG ---");
+        telemetryM.debug("Lock Enabled", turretLockEnabled);
+        telemetryM.debug("Alliance", currentAlliance);
+        telemetryM.debug("Goal Field Angle", "%.2f°", turret.getTargetFieldAngle());
+        telemetryM.debug("Robot Heading", "%.2f°", Math.toDegrees(currentPose.getHeading()));
+        telemetryM.debug("Distance to Goal", "%.2f in", turret.getDistance());
+        telemetryM.debug("Current Angle", "%.2f", turret.getCurrentAngle());
+        telemetryM.debug("Target Angle", "%.2f", turret.getTargetAngle());
+        telemetryM.debug("Turret Offset", "%.2f°", TurretSubsystem.TURRET_OFFSET_DEG);
+        telemetryM.debug("Tag 20 Visible", tag20 != null);
+        telemetryM.debug("Error", "%.2f", turret.getError());
+        telemetryM.debug("Motor Power", "%.2f", turret.getRequestedPower());
+        telemetryM.debug("PID Target RPM", "%.0f", PID_TARGET_RPM);
+        telemetryM.debug("G2 Tuning Mode", tuneRPMMode ? "RPM (Bumpers)" : "HOOD (Stick Y)");
+        telemetryM.debug("Hood Mode", manualHoodEnabled ? "MANUAL: " + String.format(Locale.US, "%.3f", manualHoodPos) : "AUTO");
+
+        telemetryM.debug("\n--- STATUS ---");
+        telemetryM.debug("Drive Mode", isRobotCentric ? "ROBOT CENTRIC" : "FIELD CENTRIC");
+        telemetryM.debug("RPM", shooter.getCurrentRPM());
+        telemetryM.debug("Memory", Arrays.toString(sorter.getRecordedColors()));
+
+        if (detections == null || detections.isEmpty()) {
+            telemetryM.debug("Vision: No tags seen");
+        } else {
+            for (AprilTagDetection d : detections) {
+                telemetryM.debug(String.format(Locale.US, "ID %d: Bearing %.1f", d.id, d.ftcPose != null ? d.ftcPose.bearing : 0));
+            }
+        }
+        telemetryM.update(telemetry);
     }
 
     @Override
