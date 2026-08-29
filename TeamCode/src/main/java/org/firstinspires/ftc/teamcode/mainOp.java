@@ -47,6 +47,7 @@ public class mainOp extends OpMode {
     private TelemetryManager telemetryM;
     private boolean slowMode = false;
     private double slowModeMultiplier = 0.5;
+
     private boolean isRobotCentric = false; // Field Centric by default
 
     public static Pose startingPose = new Pose(9, 9, Math.toRadians(90));
