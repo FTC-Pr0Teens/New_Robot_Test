@@ -221,12 +221,26 @@ public class mainOp extends OpMode {
 
         // --- SHOOT ---
         if (gamepad1.x && !lastX) {
-            shooterRunning = !shooterRunning;
-            autoShootActive = shooterRunning;
-            if (shooterRunning) {
-                shooter.on();
+            if (autoSortingEnabled) {
+                shooterRunning = !shooterRunning;
+                autoShootActive = shooterRunning;
+                if (shooterRunning) {
+                    shooter.on();
+                } else {
+                    shooter.off();
+                }
             } else {
-                shooter.off();
+                // REVAMPED X CONTROL (Manual Mode): 5s Speed Shoot Burst
+                if (sorter.isBusy()) {
+                    shooterRunning = false;
+                    autoShootActive = false;
+                    shooter.off();
+                    sorter.reset();
+                } else {
+                    shooterRunning = true;
+                    autoShootActive = true;
+                    shooter.on();
+                }
             }
         }
         lastX = gamepad1.x;
@@ -247,7 +261,6 @@ public class mainOp extends OpMode {
                         sortStep = 0;
                     }
                 } else {
-//                    sorter.startTransfer();
                     sorter.startIntakeShoot();
                     autoShootActive = false;
                 }
@@ -255,7 +268,7 @@ public class mainOp extends OpMode {
         }
 
         shooter.update();
-        sorter.update(null);
+        sorter.update(shooter);
 
         // --- TURRET ---
         if (gamepad1.left_bumper && !lastLB) {

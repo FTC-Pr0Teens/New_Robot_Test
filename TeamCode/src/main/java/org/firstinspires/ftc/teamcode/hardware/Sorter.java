@@ -24,7 +24,7 @@ public class Sorter {
     private ElapsedTime stateTimer = new ElapsedTime();
     private ElapsedTime recordCooldown = new ElapsedTime();
     
-    private enum TransferState { IDLE, WAITING_FOR_SERVO, INTAKING, FLIPPING_DOWN }
+    private enum TransferState { IDLE, WAITING_FOR_SERVO, INTAKING, FLIPPING_DOWN, INTAKE_SHOOT }
     private TransferState currentTransferState = TransferState.IDLE;
 
     public Sorter(HardwareMap hwmap, Telemetry telemetry) {
@@ -32,18 +32,11 @@ public class Sorter {
         this.telemetry = telemetry;
     }
 
-    public void startIntakeShoot(){
-        stateTimer.reset();
-        hw.flipper.setPosition(0);
-        hw.intake.setPower(1);
-
-        if (stateTimer.milliseconds() > 2000) {
-            hw.flipper.setPosition(0.15); // DOWN
-            hw.intake.setPower(0);
+    public void startIntakeShoot() {
+        if (currentTransferState == TransferState.IDLE) {
+            currentTransferState = TransferState.INTAKE_SHOOT;
+            stateTimer.reset();
         }
-
-
-
     }
     /**
      * Finds the first empty physical slot and waits there.
@@ -146,6 +139,15 @@ public class Sorter {
                 break;
             case FLIPPING_DOWN:
                 if (stateTimer.milliseconds() > 150) {
+                    currentTransferState = TransferState.IDLE;
+                }
+                break;
+            case INTAKE_SHOOT:
+                hw.flipper.setPosition(0); // UP
+                hw.intake.setPower(1.0);
+                if (stateTimer.seconds() > 5.0) {
+                    hw.intake.setPower(0);
+                    hw.flipper.setPosition(0.15); // DOWN
                     currentTransferState = TransferState.IDLE;
                 }
                 break;

@@ -181,7 +181,10 @@ public class TurretSubsystem {
         this.alliance = alliance;
         if (alliance == Alliance.BLUE) {
             setGoalPosition(45, 142.0);
-        } else {
+        } else if (alliance == Alliance.RED) {
+            setGoalPosition(45, 142.0);
+        }
+        else{
             setGoalPosition(45, 142.0);
         }
     }
